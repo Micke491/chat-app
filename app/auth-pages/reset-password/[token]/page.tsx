@@ -165,7 +165,7 @@ export default function ResetPasswordPage() {
                 This password reset link is invalid or has expired. Please request a new one.
               </p>
               <button
-                onClick={() => window.location.href = '/forgot-password'}
+                onClick={() => window.location.href = '/auth-pages/forgot-password'}
                 className="mt-4 w-full py-3 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white font-semibold rounded-xl transition-all transform hover:scale-105"
               >
                 Request New Link
@@ -272,7 +272,7 @@ export default function ResetPasswordPage() {
           {/* Back to Login */}
           {!success && (
             <button
-              onClick={() => window.location.href = '/login'}
+              onClick={() => window.location.href = '/auth-pages/login'}
               className="mt-6 w-full text-center text-purple-200 hover:text-white transition-colors text-sm"
             >
               Back to Login

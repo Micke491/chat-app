@@ -145,7 +145,7 @@ export default function ForgotPasswordPage() {
           {/* Back to Login */}
           {!success && (
             <button
-              onClick={() => window.location.href = '/login'}
+              onClick={() => window.location.href = '/auth-pages/login'}
               className="mt-6 w-full flex items-center justify-center gap-2 text-purple-200 hover:text-white transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />

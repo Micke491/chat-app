@@ -116,7 +116,7 @@ export default function LoginPage() {
 
             {/* Forgot Password */}
             <div className="flex items-center justify-end">
-              <button onClick={() => window.location.href = '/forgot-password'} className="text-sm text-purple-200 hover:text-white transition-colors cursor-pointer">
+              <button onClick={() => window.location.href = '/auth-pages/forgot-password'} className="text-sm text-purple-200 hover:text-white transition-colors cursor-pointer">
                 Forgot password?
               </button>
             </div>

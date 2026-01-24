@@ -14,12 +14,12 @@ export default function ChatIntro() {
             <span className="text-2xl font-bold">ChatFlow</span>
           </div>
           <div className="flex gap-3">
-            <Link href="/login">
+            <Link href="/auth-pages/login">
               <button className="px-5 py-2 text-white font-medium hover:bg-white/10 rounded-lg transition-colors cursor-pointer">
                 Login
               </button>
             </Link>
-            <Link href="/register">
+            <Link href="/auth-pages/register">
               <button className="px-5 py-2 bg-white text-purple-600 font-medium rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
                 Sign Up
               </button>
@@ -60,14 +60,14 @@ export default function ChatIntro() {
               <Download className="w-5 h-5 group-hover:animate-bounce" />
               Download Now
             </button>
-            <Link href="/login">
+            <Link href="/auth-pages/login">
               <button className="relative px-8 py-4 bg-white/10 backdrop-blur-md text-white font-semibold rounded-xl hover:bg-white/20 transition-all transform hover:scale-105 border-2 border-white/30 hover:border-white/50 flex items-center gap-2 shadow-lg overflow-hidden group cursor-pointer">
                 <div className="absolute inset-0 bg-gradient-to-r from-pink-500/20 to-purple-500/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <LogIn className="w-5 h-5 relative z-10 group-hover:rotate-12 transition-transform" />
                 <span className="relative z-10">Login</span>
               </button>
             </Link>
-            <Link href="/register">
+            <Link href="/auth-pages/register">
               <button className="px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-500 text-white font-semibold rounded-xl hover:from-pink-600 hover:to-purple-600 transition-all transform hover:scale-105 flex items-center gap-2 shadow-xl cursor-pointer">
                 <UserPlus className="w-5 h-5" />
                 Register Free

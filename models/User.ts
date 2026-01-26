@@ -55,7 +55,6 @@ const UserSchema = new Schema<IUser>(
   }
 );
 
-// Clear the model cache in development to ensure schema changes are picked up
 if (process.env.NODE_ENV !== 'production') {
   delete mongoose.models.User;
 }

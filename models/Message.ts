@@ -35,6 +35,8 @@ const MessageSchema = new Schema<IMessage>(
     timestamps: true,
   }
 );
+MessageSchema.index({ chatId: 1, createdAt: 1 });
+MessageSchema.index({ sender: 1 });
 
 if (process.env.NODE_ENV !== "production") {
   delete mongoose.models.Message;

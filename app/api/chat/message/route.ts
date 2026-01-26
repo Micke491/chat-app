@@ -9,26 +9,21 @@ export async function POST(req: Request) {
     try {
         await connectDB();
         const auth = verifyToken(req);
-        if (!auth) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+        if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const { chatId, senderId, text } = await req.json();
-
-        // Validation
-        if (!chatId || !senderId || !text || text.trim().length === 0) {
-            return NextResponse.json({ error: "Missing or invalid fields" }, { status: 400 });
-        }
 
         if (auth.id !== senderId) {
             return NextResponse.json({ error: "Unauthorized sender" }, { status: 403 });
         }
 
-        // Check if user is participant in chat
         const chat = await Chat.findById(chatId);
-        const mongoose = (await import('mongoose')).default;
-        if (!chat || !chat.participants.includes(new mongoose.Types.ObjectId(senderId))) {
-            return NextResponse.json({ error: "Chat not found or unauthorized" }, { status: 404 });
+        if (!chat) return NextResponse.json({ error: "Chat not found" }, { status: 404 });
+
+        const isParticipant = chat.participants.some(p => p.toString() === senderId);
+        
+        if (!isParticipant) {
+            return NextResponse.json({ error: "Not a member of this chat" }, { status: 403 });
         }
 
         const newMessage = await Message.create({
@@ -39,10 +34,11 @@ export async function POST(req: Request) {
 
         await Chat.findByIdAndUpdate(chatId, { lastMessage: newMessage._id });
 
-        return NextResponse.json({ message: newMessage }, { status: 201 });
+        const populatedMessage = await Message.findById(newMessage._id).populate('sender', 'username avatar');
+
+        return NextResponse.json({ message: populatedMessage }, { status: 201 });
     } catch (error) {
-        console.error("Error creating message:", error);
-        return NextResponse.json({ error: "Failed to create message" }, { status: 500 });
+        return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 }
 
@@ -57,23 +53,29 @@ export async function GET(req: Request) {
 
         const { searchParams } = new URL(req.url);
         const chatId = searchParams.get('chatId');
+        const limit = parseInt(searchParams.get('limit') || '50');
+        const before = searchParams.get('before'); // Cursor for pagination
 
         if (!chatId) {
             return NextResponse.json({ error: "Chat ID required" }, { status: 400 });
         }
 
-        // Check if user is participant
         const chat = await Chat.findById(chatId);
-        const mongoose = (await import('mongoose')).default;
-        if (!chat || !chat.participants.includes(new mongoose.Types.ObjectId(auth.id))) {
+        if (!chat || !chat.participants.some(p => p.toString() === auth.id)) {
             return NextResponse.json({ error: "Chat not found or unauthorized" }, { status: 404 });
         }
 
-        const messages = await Message.find({ chatId })
-            .populate('sender', 'username email')
-            .sort({ createdAt: 1 });
+        const query: any = { chatId };
+        if (before) {
+            query.createdAt = { $lt: new Date(before) };
+        }
 
-        return NextResponse.json({ messages }, { status: 200 });
+        const messages = await Message.find(query)
+            .populate('sender', 'username email')
+            .sort({ createdAt: -1 })
+            .limit(limit);
+
+        return NextResponse.json({ messages: messages.reverse() }, { status: 200 });
     } catch (error) {
         console.error("Error fetching messages:", error);
         return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });

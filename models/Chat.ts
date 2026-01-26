@@ -24,6 +24,8 @@ const ChatSchema = new Schema<IChat>(
     timestamps: true,
   }
 );
+ChatSchema.index({ participants: 1 });
+ChatSchema.index({ updatedAt: -1 });
 
 if (process.env.NODE_ENV !== "production") {
   delete mongoose.models.Chat;

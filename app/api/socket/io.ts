@@ -77,40 +77,38 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
         try {
           await connectDB();
           const { chatId, text } = messageData;
-          const senderId = socket.data.userId;
+          const senderId = socket.data.userId; // From the auth middleware
 
-          // Validation
-          if (!chatId || !text || text.trim().length === 0) {
-            socket.emit("error", "Invalid message data");
-            return;
-          }
+          if (!chatId || !text.trim()) return;
 
-          // Check if user is participant
+          // Fix: Validate participant using string comparison
           const chat = await Chat.findById(chatId);
-          if (!chat || !chat.participants.includes(senderId)) {
-            socket.emit("error", "Unauthorized");
+          const isParticipant = chat?.participants.some(p => p.toString() === senderId);
+
+          if (!isParticipant) {
+            socket.emit("error", "You are not in this chat");
             return;
           }
 
-          // Create message
           const newMessage = await Message.create({
             chatId,
             sender: senderId,
             text: text.trim(),
           });
 
-          await Chat.findByIdAndUpdate(chatId, { lastMessage: newMessage._id });
-
-          // Populate sender for emission
-          await newMessage.populate('sender', 'username email');
-
-          io.to(chatId).emit("receive-message", {
-            ...newMessage.toObject(),
-            createdAt: newMessage.createdAt,
+          await Chat.findByIdAndUpdate(chatId, { 
+            lastMessage: newMessage._id,
+            updatedAt: new Date() // Forces the chat list to re-order
           });
+
+          const populatedMessage = await newMessage.populate('sender', 'username email avatar');
+
+          // Emit to everyone in the room INCLUDING the sender
+          io.to(chatId).emit("receive-message", populatedMessage);
+
         } catch (error) {
-          console.error("Error sending message:", error);
-          socket.emit("error", "Failed to send message");
+          console.error("Socket Message Error:", error);
+          socket.emit("error", "Message failed to send");
         }
       });
 

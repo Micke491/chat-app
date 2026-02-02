@@ -36,7 +36,7 @@ export default function LoginPage() {
       localStorage.setItem('token', data.token);
       
       // Redirect to dashboard or chat
-      window.location.href = '/chat';
+      window.location.href = '/chat'; 
       
     } catch (err) {
       setError('Something went wrong. Please try again.');
@@ -161,7 +161,7 @@ export default function LoginPage() {
           {/* Sign Up Link */}
           <p className="mt-6 text-center text-purple-200">
             Don't have an account?{' '}
-            <button onClick={() => window.location.href = '/register'} className="text-white font-semibold hover:underline">
+            <button onClick={() => window.location.href = '/auth-pages/register'} className="text-white font-semibold hover:underline">
               Sign up
             </button>
           </p>

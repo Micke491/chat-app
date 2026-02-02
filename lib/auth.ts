@@ -7,6 +7,11 @@ interface DecodedToken extends JwtPayload {
   email?: string;
 }
 
+export interface AuthUser {
+  id: string;
+  email?: string;
+}
+
 export function verifyToken(req: Request) {
   try {
     // 1. Get Token from Header or Cookie

@@ -29,12 +29,15 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
   if (!res.socket?.server?.io) {
     const httpServer: NetServer = res.socket.server;
     const io = new ServerIO(httpServer, {
-      path: "/api/socket/io",
+      path: "/api/socket/server",
       addTrailingSlash: false,
       cors: {
         origin: process.env.NEXT_PUBLIC_SITE_URL,
         methods: ["GET", "POST"],
       },
+      // Increase ping timeout and interval for better stability
+      pingTimeout: 60000,
+      pingInterval: 25000,
     });
 
     // Auth middleware
@@ -67,10 +70,21 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
           }
           socket.join(chatId);
           socket.emit("joined-chat", chatId);
+          
+          // Also join user's personal room if not already joined (redundancy check)
+          const userRoom = `user-${socket.data.userId}`;
+          socket.join(userRoom);
         } catch (error) {
           console.error("Error joining chat:", error);
           socket.emit("error", "Failed to join chat");
         }
+      });
+
+      // Allow client to explicitly join their notification channel
+      socket.on("join-notifications", () => {
+         const userRoom = `user-${socket.data.userId}`;
+         socket.join(userRoom);
+         console.log(`User ${socket.data.userId} joined notification channel ${userRoom}`);
       });
 
       socket.on("send-new-message", async (messageData: { chatId: string; text: string }) => {
@@ -103,8 +117,18 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
 
           const populatedMessage = await newMessage.populate('sender', 'username email avatar');
 
-          // Emit to everyone in the room INCLUDING the sender
+          // Emit to everyone in the room INCLUDING the sender (for chat window)
           io.to(chatId).emit("receive-message", populatedMessage);
+
+          // Emit update to all participants for their chat list
+          chat?.participants.forEach((participantId) => {
+             // Emit to user's personal room
+             io.to(`user-${participantId.toString()}`).emit("chat-update", {
+                chatId,
+                lastMessage: populatedMessage,
+                unreadCount: participantId.toString() !== senderId ? 1 : 0 // Simple increment hint, client should probably refetch or increment
+             });
+          });
 
         } catch (error) {
           console.error("Socket Message Error:", error);

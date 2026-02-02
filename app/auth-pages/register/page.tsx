@@ -229,7 +229,7 @@ export default function RegisterPage() {
           {/* Login Link */}
           <p className="mt-6 text-center text-purple-200">
             Already have an account?{' '}
-            <button onClick={() => window.location.href = '/login'} className="text-white font-semibold hover:underline">
+            <button onClick={() => window.location.href = '/auth-pages/login'} className="text-white font-semibold hover:underline">
               Sign in
             </button>
           </p>

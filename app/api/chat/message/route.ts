@@ -32,7 +32,10 @@ export async function POST(req: Request) {
             text: text.trim(),
         });
 
-        await Chat.findByIdAndUpdate(chatId, { lastMessage: newMessage._id });
+        await Chat.findByIdAndUpdate(chatId, {
+            lastMessage: newMessage._id,
+            updatedAt: new Date(),
+        })
 
         const populatedMessage = await Message.findById(newMessage._id).populate('sender', 'username avatar');
 
@@ -59,6 +62,18 @@ export async function GET(req: Request) {
         if (!chatId) {
             return NextResponse.json({ error: "Chat ID required" }, { status: 400 });
         }
+
+        // Mark all unread messages in this chat as read for the current user
+        await Message.updateMany(
+            { 
+                chatId, 
+                sender: { $ne: auth.id },
+                read: false
+            },
+            { 
+                $set: { read: true } 
+            }
+        );
 
         const chat = await Chat.findById(chatId);
         if (!chat || !chat.participants.some(p => p.toString() === auth.id)) {

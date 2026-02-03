@@ -185,15 +185,6 @@ export default function ChatList({ currentUserId, onChatSelect, selectedChatId }
       {/* Header */}
       <div className="flex items-center justify-between p-5 border-b border-gray-200">
         <h2 className="text-2xl font-bold text-gray-900">Messages</h2>
-        <button 
-          className="flex items-center justify-center w-10 h-10 text-white transition-all bg-blue-600 rounded-full hover:scale-105 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          onClick={() => router.push('/chat')}
-          aria-label="New Chat"
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M10 4V16M4 10H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-        </button>
       </div>
       
       {/* List Items */}

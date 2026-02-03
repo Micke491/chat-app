@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 
 interface Message {
@@ -19,16 +20,21 @@ interface ChatWindowProps {
   chatId: string;
   currentUserId: string;
   recipientUsername?: string;
+  onClose?: () => void;
 }
 
-export default function ChatWindow({ chatId, currentUserId, recipientUsername }: ChatWindowProps) {
+export default function ChatWindow({ chatId, currentUserId, recipientUsername, onClose }: ChatWindowProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isTypingRef = useRef<boolean>(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -66,6 +72,21 @@ export default function ChatWindow({ chatId, currentUserId, recipientUsername }:
           }
           return [...prev, message];
         });
+      });
+
+      socketInstance.on('user-typing', (data: { username: string; userId: string }) => {
+        if (data.userId !== currentUserId) {
+          setTypingUsers(prev => {
+            if (!prev.includes(data.username)) {
+              return [...prev, data.username];
+            }
+            return prev;
+          });
+        }
+      });
+
+      socketInstance.on('user-stopped-typing', (data: { username: string; userId: string }) => {
+        setTypingUsers(prev => prev.filter(username => username !== data.username));
       });
 
       socketInstance.on('connect_error', (err) => {
@@ -134,6 +155,19 @@ export default function ChatWindow({ chatId, currentUserId, recipientUsername }:
     setNewMessage('');
     setSending(true);
 
+    // Clear typing indicator when sending message
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    if (isTypingRef.current && socket) {
+      socket.emit('user-stopped-typing', { 
+        chatId, 
+        username: recipientUsername || 'You' 
+      });
+      isTypingRef.current = false;
+    }
+
     try {
       socket.emit('send-new-message', { chatId, text: messageText });
     } catch (error) {
@@ -178,6 +212,16 @@ export default function ChatWindow({ chatId, currentUserId, recipientUsername }:
       {/* Chat Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-3">
+          {/* Back Button */}
+          <button
+            onClick={() => onClose ? onClose() : router.push('/chat')}
+            className="flex items-center justify-center w-9 h-9 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+            aria-label="Back to chats"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+              <path d="M12 4L6 10L12 16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
           <div className="flex items-center justify-center w-11 h-11 text-lg font-bold text-white rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm">
             {recipientUsername?.charAt(0).toUpperCase() || '?'}
           </div>
@@ -235,6 +279,25 @@ export default function ChatWindow({ chatId, currentUserId, recipientUsername }:
           );
         })}
         <div ref={messagesEndRef} />
+        
+        {/* Typing Indicator */}
+        {typingUsers.length > 0 && (
+          <div className="px-4 py-2 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <div className="flex gap-1">
+              <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+            <span className="font-medium">
+              {typingUsers.length === 1 
+                ? `${typingUsers[0]} is typing...`
+                : typingUsers.length === 2
+                ? `${typingUsers[0]} and ${typingUsers[1]} are typing...`
+                : `${typingUsers[0]} and ${typingUsers.length - 1} others are typing...`
+              }
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Input Form */}
@@ -246,7 +309,38 @@ export default function ChatWindow({ chatId, currentUserId, recipientUsername }:
           <textarea
             ref={inputRef}
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              
+              // Handle typing indicator
+              if (socket && e.target.value.trim()) {
+                // Clear existing timeout
+                if (typingTimeoutRef.current) {
+                  clearTimeout(typingTimeoutRef.current);
+                }
+
+                // Emit typing event if not already typing
+                if (!isTypingRef.current) {
+                  socket.emit('user-typing', { chatId, username: recipientUsername || 'You' });
+                  isTypingRef.current = true;
+                }
+
+                // Set timeout to emit stopped typing after 2 seconds of inactivity
+                typingTimeoutRef.current = setTimeout(() => {
+                  if (socket) {
+                    socket.emit('user-stopped-typing', { chatId, username: recipientUsername || 'You' });
+                    isTypingRef.current = false;
+                  }
+                }, 2000);
+              } else if (isTypingRef.current && socket) {
+                // If input is cleared, immediately stop typing indicator
+                if (typingTimeoutRef.current) {
+                  clearTimeout(typingTimeoutRef.current);
+                }
+                socket.emit('user-stopped-typing', { chatId, username: recipientUsername || 'You' });
+                isTypingRef.current = false;
+              }
+            }}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             rows={1}

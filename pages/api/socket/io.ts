@@ -136,6 +136,54 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
         }
       });
 
+      socket.on("user-typing", async (data: { chatId: string; username: string }) => {
+        try {
+          await connectDB();
+          const { chatId, username } = data;
+          const userId = socket.data.userId;
+
+          if (!chatId || !username) return;
+
+          // Validate user is in the chat
+          const chat = await Chat.findById(chatId);
+          const isParticipant = chat?.participants.some(p => p.toString() === userId);
+
+          if (!isParticipant) {
+            socket.emit("error", "You are not in this chat");
+            return;
+          }
+
+          // Broadcast to other participants in the chat (excluding sender)
+          socket.to(chatId).emit("user-typing", { username, userId });
+        } catch (error) {
+          console.error("Error handling typing event:", error);
+        }
+      });
+
+      socket.on("user-stopped-typing", async (data: { chatId: string; username: string }) => {
+        try {
+          await connectDB();
+          const { chatId, username } = data;
+          const userId = socket.data.userId;
+
+          if (!chatId || !username) return;
+
+          // Validate user is in the chat
+          const chat = await Chat.findById(chatId);
+          const isParticipant = chat?.participants.some(p => p.toString() === userId);
+
+          if (!isParticipant) {
+            socket.emit("error", "You are not in this chat");
+            return;
+          }
+
+          // Broadcast to other participants in the chat (excluding sender)
+          socket.to(chatId).emit("user-stopped-typing", { username, userId });
+        } catch (error) {
+          console.error("Error handling stopped typing event:", error);
+        }
+      });
+
       socket.on("disconnect", () => {
         console.log("User disconnected:", socket.id);
       });

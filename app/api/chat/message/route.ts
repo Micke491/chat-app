@@ -4,7 +4,6 @@ import Message from '@/models/Message';
 import Chat from '@/models/Chat';
 import { verifyToken } from '@/lib/auth';
 
-// Handle POST request to create a new message
 export async function POST(req: Request) {
     try {
         await connectDB();
@@ -45,7 +44,6 @@ export async function POST(req: Request) {
     }
 }
 
-// Handle GET request to fetch messages for a chat
 export async function GET(req: Request) {
     try {
         await connectDB();
@@ -56,41 +54,65 @@ export async function GET(req: Request) {
 
         const { searchParams } = new URL(req.url);
         const chatId = searchParams.get('chatId');
-        const limit = parseInt(searchParams.get('limit') || '50');
-        const before = searchParams.get('before'); // Cursor for pagination
+        const limit = parseInt(searchParams.get('limit') || '30');
+        const before = searchParams.get('before');
 
         if (!chatId) {
             return NextResponse.json({ error: "Chat ID required" }, { status: 400 });
         }
-
-        // Mark all unread messages in this chat as read for the current user
-        await Message.updateMany(
-            { 
-                chatId, 
-                sender: { $ne: auth.id },
-                read: false
-            },
-            { 
-                $set: { read: true } 
-            }
-        );
 
         const chat = await Chat.findById(chatId);
         if (!chat || !chat.participants.some(p => p.toString() === auth.id)) {
             return NextResponse.json({ error: "Chat not found or unauthorized" }, { status: 404 });
         }
 
-        const query: any = { chatId };
+        const query: any = { 
+            chatId,
+            deletedBy: { $ne: auth.id }
+        };
+        
         if (before) {
             query.createdAt = { $lt: new Date(before) };
         }
 
         const messages = await Message.find(query)
-            .populate('sender', 'username email')
+            .populate('sender', 'username email avatar')
+            .populate({
+                path: 'replyTo',
+                populate: { path: 'sender', select: 'username email' }
+            })
             .sort({ createdAt: -1 })
-            .limit(limit);
+            .limit(limit + 1);
 
-        return NextResponse.json({ messages: messages.reverse() }, { status: 200 });
+        const hasMore = messages.length > limit;
+        const messagesToReturn = hasMore ? messages.slice(0, limit) : messages;
+        const nextCursor = hasMore ? messagesToReturn[messagesToReturn.length - 1].createdAt.toISOString() : null;
+
+        const unreadMessageIds = messagesToReturn
+            .filter(msg => msg.sender.toString() !== auth.id && msg.status !== 'seen')
+            .map(msg => msg._id);
+
+        if (unreadMessageIds.length > 0) {
+            await Message.updateMany(
+                { 
+                    _id: { $in: unreadMessageIds },
+                    'readBy.userId': { $ne: auth.id }
+                },
+                { 
+                    $push: { 
+                        readBy: { userId: auth.id, readAt: new Date() } 
+                    },
+                    $addToSet: { deliveredTo: auth.id },
+                    $set: { status: 'seen', read: true }
+                }
+            );
+        }
+
+        return NextResponse.json({ 
+            messages: messagesToReturn.reverse(),
+            hasMore,
+            nextCursor
+        }, { status: 200 });
     } catch (error) {
         console.error("Error fetching messages:", error);
         return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });

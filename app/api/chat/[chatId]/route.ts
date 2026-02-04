@@ -9,10 +9,7 @@ export async function GET(
 ) {
     try {
         await connectDB();
-        
-        // Await the params object (Next.js 15+ requirement)
         const { chatId } = await params;
-        
         const auth = verifyToken(request);
         if (!auth) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

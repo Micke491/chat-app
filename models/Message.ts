@@ -1,13 +1,49 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
+export interface IReadByEntry {
+  userId: mongoose.Types.ObjectId;
+  readAt: Date;
+}
+
 export interface IMessage extends Document {
   chatId: mongoose.Types.ObjectId;
   sender: mongoose.Types.ObjectId;
   text: string;
   read: boolean;
+  
+  status: 'sent' | 'delivered' | 'seen';
+  deliveredTo: mongoose.Types.ObjectId[];
+  readBy: IReadByEntry[];
+  
+  isEdited: boolean;
+  editedAt?: Date;
+  originalText?: string;
+  
+  isDeletedForEveryone: boolean;
+  deletedBy: mongoose.Types.ObjectId[];
+  deletedForEveryoneAt?: Date;
+  
+  replyTo?: mongoose.Types.ObjectId;
+  
   createdAt: Date;
   updatedAt: Date;
 }
+
+const ReadByEntrySchema = new Schema<IReadByEntry>(
+  {
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    readAt: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+  },
+  { _id: false }
+);
 
 const MessageSchema = new Schema<IMessage>(
   {
@@ -32,13 +68,51 @@ const MessageSchema = new Schema<IMessage>(
       type: Boolean,
       default: false,
     },
+    
+    status: {
+      type: String,
+      enum: ['sent', 'delivered', 'seen'],
+      default: 'sent',
+    },
+    deliveredTo: [{
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    }],
+    readBy: [ReadByEntrySchema],
+    
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
+      type: Date,
+    },
+    originalText: {
+      type: String,
+    },
+    
+    isDeletedForEveryone: {
+      type: Boolean,
+      default: false,
+    },
+    deletedBy: [{
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    }],
+    deletedForEveryoneAt: {
+      type: Date,
+    },
+    
+    replyTo: {
+      type: Schema.Types.ObjectId,
+      ref: 'Message',
+    },
   },
   {
     timestamps: true,
   }
 );
 
-// Indexes for better query performance
 MessageSchema.index({ chatId: 1, createdAt: -1 });
 MessageSchema.index({ sender: 1 });
 

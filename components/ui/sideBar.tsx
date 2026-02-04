@@ -18,7 +18,7 @@ export default function SideBar({ currentUser }: SideBarProps) {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
-    router.push('/login');
+    router.push('/auth-pages/login');
   };
 
   const isActive = (path: string) => pathname?.startsWith(path);

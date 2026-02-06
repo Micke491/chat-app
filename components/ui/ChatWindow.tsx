@@ -6,6 +6,7 @@ import { io, Socket } from "socket.io-client";
 import MessageStatusIcon from "./MessageStatusIcon";
 
 interface Message {
+  status: "seen" | "sent" | "delivered";
   _id: string;
   chatId: string;
   sender: {
@@ -16,10 +17,11 @@ interface Message {
   text: string;
   createdAt: string;
   updatedAt: string;
-  status: "sent" | "delivered" | "seen";
   isEdited?: boolean;
   replyTo?: Message;
   isDeletedForEveryone?: boolean;
+  mediaUrl?: string;
+  mediaType?: "image" | "video";
 }
 
 interface ChatWindowProps {
@@ -51,6 +53,8 @@ export default function ChatWindow({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isTypingRef = useRef<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -118,6 +122,8 @@ export default function ChatWindow({
                 ...m,
                 isDeletedForEveryone: true,
                 text: "This message was deleted",
+                mediaUrl: undefined,
+                mediaType: undefined,
               };
             }
             return m;
@@ -285,6 +291,54 @@ export default function ChatWindow({
     } finally {
       setSending(false);
       inputRef.current?.focus();
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert("File is too large. Maximum size is 10MB.");
+      return;
+    }
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("/api/chat/media/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const data = await response.json();
+
+      // Automatically send the message with the media
+      if (socket) {
+        socket.emit("send-new-message", {
+          chatId,
+          mediaUrl: data.url,
+          mediaType: data.mediaType,
+          mediaPublicId: data.publicId,
+          replyTo: replyingTo?._id,
+        });
+        setReplyingTo(null);
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Failed to upload file.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -462,7 +516,7 @@ export default function ChatWindow({
                       {!message.isDeletedForEveryone && message.replyTo && (
                         <div
                           className={`
-                                    mb-2 p-2 rounded text-xs border-l-2 opacity-90
+                                    flex mb-2 p-2 rounded text-xs border-l-2 opacity-90
                                     ${
                                       isOwn
                                         ? "bg-blue-700/50 border-blue-300"
@@ -470,16 +524,75 @@ export default function ChatWindow({
                                     }
                                 `}
                         >
-                          <p className="font-semibold mb-0.5 opacity-75">
-                            {message.replyTo.sender.username}
-                          </p>
-                          <p className="line-clamp-1">{message.replyTo.text}</p>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold mb-0.5 opacity-75">
+                              {message.replyTo.sender.username}
+                            </p>
+                            <p className="line-clamp-1 truncate">
+                              {message.replyTo.text ||
+                                (message.replyTo.mediaUrl
+                                  ? message.replyTo.mediaType === "video"
+                                    ? "📹 Video"
+                                    : "🖼️ Photo"
+                                  : "")}
+                            </p>
+                          </div>
+                          {message.replyTo.mediaUrl && (
+                            <div className="flex-shrink-0 w-12 h-12 rounded overflow-hidden border border-white/20 ml-2">
+                              {message.replyTo.mediaType === "video" ? (
+                                <div className="w-full h-full bg-slate-200 flex items-center justify-center">
+                                  <svg
+                                    className="w-6 h-6 text-slate-500"
+                                    fill="currentColor"
+                                    viewBox="0 0 20 20"
+                                  >
+                                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <img
+                                  src={message.replyTo.mediaUrl}
+                                  className="w-full h-full object-cover"
+                                  alt="Reply preview"
+                                />
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
 
-                      <p className="whitespace-pre-wrap break-words">
-                        {message.text}
-                      </p>
+                      {/* Only show media if it exists and message is not deleted */}
+                      {message.mediaUrl && !message.isDeletedForEveryone && (
+                        <div className="mb-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 max-w-[320px] max-h-[320px] bg-slate-100 dark:bg-slate-800">
+                          {message.mediaType === "video" ? (
+                            <video
+                              src={message.mediaUrl}
+                              controls
+                              className="w-full h-full object-contain max-h-[320px]"
+                            />
+                          ) : (
+                            <img
+                              src={message.mediaUrl}
+                              alt="Shared media"
+                              className="w-full h-full object-cover cursor-pointer hover:opacity-95 transition-opacity max-h-[320px]"
+                              onClick={() =>
+                                window.open(message.mediaUrl, "_blank")
+                              }
+                            />
+                          )}
+                        </div>
+                      )}
+
+                      {message.text && (
+                        <p className="whitespace-pre-wrap break-words">
+                          {message.text}
+                        </p>
+                      )}
                     </div>
 
                     {/* Message Actions Menu (Visible on Hover) */}
@@ -511,25 +624,28 @@ export default function ChatWindow({
                         </button>
                         {isOwn && (
                           <>
-                            <button
-                              onClick={() => startEdit(message)}
-                              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500"
-                              title="Edit"
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
+                            {/* Only allow editing if there's text */}
+                            {message.text && (
+                              <button
+                                onClick={() => startEdit(message)}
+                                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500"
+                                title="Edit"
                               >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                                />
-                              </svg>
-                            </button>
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                  />
+                                </svg>
+                              </button>
+                            )}
                             <button
                               onClick={() => handleDelete(message._id)}
                               className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-red-500"
@@ -610,15 +726,50 @@ export default function ChatWindow({
         {/* Reply / Edit Banner */}
         {(replyingTo || editingMessage) && (
           <div className="max-w-4xl mx-auto mb-2 flex items-center justify-between px-4 py-2 bg-slate-100 dark:bg-slate-900 rounded-lg border-l-4 border-blue-500">
-            <div className="flex flex-col text-sm">
-              <span className="font-semibold text-blue-600 dark:text-blue-400">
-                {editingMessage
-                  ? "Editing Message"
-                  : `Replying to ${replyingTo?.sender.username}`}
-              </span>
-              <span className="text-slate-600 dark:text-slate-400 line-clamp-1 text-xs">
-                {editingMessage ? "" : replyingTo?.text}
-              </span>
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="flex flex-col text-sm flex-1 min-w-0">
+                <span className="font-semibold text-blue-600 dark:text-blue-400">
+                  {editingMessage
+                    ? "Editing Message"
+                    : `Replying to ${replyingTo?.sender.username}`}
+                </span>
+                <span className="text-slate-600 dark:text-slate-400 line-clamp-1 text-xs truncate">
+                  {editingMessage
+                    ? editingMessage.text
+                    : replyingTo?.text ||
+                      (replyingTo?.mediaUrl
+                        ? replyingTo.mediaType === "video"
+                          ? "Video"
+                          : "Photo"
+                        : "")}
+                </span>
+              </div>
+              {replyingTo?.mediaUrl && (
+                <div className="flex-shrink-0 w-10 h-10 rounded overflow-hidden border border-slate-200 dark:border-slate-700">
+                  {replyingTo.mediaType === "video" ? (
+                    <div className="w-full h-full bg-slate-200 flex items-center justify-center">
+                      <svg
+                        className="w-5 h-5 text-slate-500"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                  ) : (
+                    <img
+                      src={replyingTo.mediaUrl}
+                      className="w-full h-full object-cover"
+                      alt="Reply media"
+                    />
+                  )}
+                </div>
+              )}
             </div>
             <button
               onClick={() => {
@@ -626,7 +777,7 @@ export default function ChatWindow({
                 setEditingMessage(null);
                 setNewMessage("");
               }}
-              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full"
+              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full flex-shrink-0 ml-2"
             >
               <svg
                 className="w-4 h-4 text-slate-500"
@@ -645,6 +796,38 @@ export default function ChatWindow({
           className="max-w-4xl mx-auto flex items-end gap-3 px-4 py-2 bg-slate-50 dark:bg-slate-900 rounded-[28px] focus-within:ring-2 focus-within:ring-blue-500/20 transition-all border border-transparent focus-within:border-blue-500/30"
           onSubmit={handleSend}
         >
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept="image/*,video/*"
+            onChange={handleFileUpload}
+          />
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 transition-all"
+          >
+            {uploading ? (
+              <div className="w-5 h-5 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+            ) : (
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                />
+              </svg>
+            )}
+          </button>
+
           <textarea
             ref={inputRef}
             value={newMessage}

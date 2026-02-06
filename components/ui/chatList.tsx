@@ -12,7 +12,9 @@ interface Chat {
     email: string;
   }>;
   lastMessage?: {
-    text: string;
+    text?: string;
+    mediaUrl?: string;
+    mediaType?: 'image' | 'video';
     createdAt: string;
   };
   updatedAt: string;
@@ -81,6 +83,8 @@ export default function ChatList({ currentUserId, onChatSelect, selectedChatId }
           updatedAt: new Date().toISOString(),
           lastMessage: {
              text: data.lastMessage.text,
+             mediaUrl: data.lastMessage.mediaUrl,
+             mediaType: data.lastMessage.mediaType,
              createdAt: data.lastMessage.createdAt
           },
           participants: existingChat?.participants || [], 
@@ -237,7 +241,10 @@ export default function ChatList({ currentUserId, onChatSelect, selectedChatId }
                     </span>
                   </div>
                   <p className={`text-sm truncate ${isUnread ? 'font-bold text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
-                    {chat.lastMessage?.text || 'No messages yet'}
+                    {chat.lastMessage?.text || 
+                     (chat.lastMessage?.mediaType === 'image' ? 'Image' : 
+                      chat.lastMessage?.mediaType === 'video' ? 'Video' : 
+                      'No messages yet')}
                   </p>
                 </div>
               </div>

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import Message from '@/models/Message';
 import { verifyToken } from '@/lib/auth';
+import cloudinary from '@/lib/cloudinary';
 
 export async function DELETE(
   req: Request,
@@ -32,10 +33,22 @@ export async function DELETE(
       if (messageAge > timeLimit) {
         return NextResponse.json({ error: 'Message too old to delete for everyone' }, { status: 400 });
       }
+      if (message.mediaPublicId) {
+        try {
+          await cloudinary.uploader.destroy(message.mediaPublicId, {
+            resource_type: message.mediaType === 'video' ? 'video' : 'image'
+          });
+        } catch (cloudinaryError) {
+          console.error('Cloudinary deletion error:', cloudinaryError);
+        }
+      }
 
       message.isDeletedForEveryone = true;
       message.deletedForEveryoneAt = new Date();
       message.text = 'This message was deleted';
+      message.mediaUrl = undefined;
+      message.mediaType = undefined;
+      message.mediaPublicId = undefined;
     } else {
       if (!message.deletedBy.includes(auth.id as any)) {
         message.deletedBy.push(auth.id as any);

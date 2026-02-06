@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import { connectDB } from "@/lib/db";
 import Message from "@/models/Message";
 import Chat from "@/models/Chat";
+import cloudinary from "@/lib/cloudinary";
 
 interface DecodedToken {
   userId?: string;
@@ -80,13 +81,13 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
          console.log(`User ${socket.data.userId} joined notification channel ${userRoom}`);
       });
 
-      socket.on("send-new-message", async (messageData: { chatId: string; text: string; replyTo?: string }) => {
+      socket.on("send-new-message", async (messageData: { chatId: string; text?: string; replyTo?: string; mediaUrl?: string; mediaType?: 'image' | 'video'; mediaPublicId?: string }) => {
         try {
           await connectDB();
-          const { chatId, text, replyTo } = messageData;
+          const { chatId, text, replyTo, mediaUrl, mediaType, mediaPublicId } = messageData;
           const senderId = socket.data.userId; 
 
-          if (!chatId || !text.trim()) return;
+          if (!chatId || (!text?.trim() && !mediaUrl)) return;
           const chat = await Chat.findById(chatId);
           const isParticipant = chat?.participants.some(p => p.toString() === senderId);
 
@@ -98,8 +99,11 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
           const newMessage = await Message.create({
             chatId,
             sender: senderId,
-            text: text.trim(),
+            text: text?.trim() || "",
             replyTo: replyTo || undefined,
+            mediaUrl,
+            mediaType,
+            mediaPublicId,
           });
 
           await Chat.findByIdAndUpdate(chatId, { 
@@ -218,9 +222,25 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
                  socket.emit("error", "Unauthorized to delete this message");
                  return;
             }
+
+            // Delete from Cloudinary if media exists
+            if (message.mediaPublicId) {
+                try {
+                    await cloudinary.uploader.destroy(message.mediaPublicId, {
+                        resource_type: message.mediaType === 'video' ? 'video' : 'image'
+                    });
+                } catch (cloudinaryError) {
+                    console.error("Cloudinary deletion error:", cloudinaryError);
+                    // We continue even if Cloudinary fails, as we want to mark it deleted in DB
+                }
+            }
+
             message.isDeletedForEveryone = true;
             message.deletedForEveryoneAt = new Date();
             message.text = "This message was deleted"; 
+            message.mediaUrl = undefined;
+            message.mediaType = undefined;
+            message.mediaPublicId = undefined;
             await message.save();
             
             io.to(chatId).emit("message-deleted", { messageId, chatId });

@@ -11,6 +11,7 @@ interface User {
   _id: string;
   username: string;
   email: string;
+  avatar?: string;
 }
 
 interface Chat {
@@ -157,6 +158,7 @@ export default function ChatPageContent({ chatId }: ChatPageContentProps) {
               chatId={chatId}
               currentUserId={currentUser._id}
               recipientUsername={getRecipient()?.username}
+              recipientAvatar={getRecipient()?.avatar}
             />
           ) : (
             /* Empty State */

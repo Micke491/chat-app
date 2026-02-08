@@ -10,6 +10,7 @@ interface Chat {
     _id: string;
     username: string;
     email: string;
+    avatar?: string;
   }>;
   lastMessage?: {
     text?: string;
@@ -223,8 +224,12 @@ export default function ChatList({ currentUserId, onChatSelect, selectedChatId }
                 `}
               >
                 {/* Avatar */}
-                <div className="relative flex items-center justify-center flex-shrink-0 w-12 h-12 text-lg font-semibold text-white rounded-full bg-gradient-to-br from-blue-500 to-blue-600">
-                  {otherUser?.username?.charAt(0).toUpperCase() || '?'}
+                <div className="relative flex items-center justify-center flex-shrink-0 w-12 h-12 text-lg font-semibold text-white rounded-full bg-gradient-to-br from-blue-500 to-blue-600 overflow-hidden">
+                  {otherUser?.avatar ? (
+                    <img src={otherUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    otherUser?.username?.charAt(0).toUpperCase() || '?'
+                  )}
                   {isUnread && (
                     <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 border-2 border-white rounded-full"></span>
                   )}

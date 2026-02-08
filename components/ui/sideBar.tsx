@@ -8,6 +8,7 @@ interface SideBarProps {
     _id: string;
     username: string;
     email: string;
+    avatar?: string;
   };
 }
 
@@ -79,8 +80,12 @@ export default function SideBar({ currentUser }: SideBarProps) {
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
           >
-            <div className="shrink-0 w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-inner">
-              {currentUser?.username?.charAt(0).toUpperCase() || 'U'}
+            <div className="shrink-0 w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-inner overflow-hidden">
+              {currentUser?.avatar ? (
+                <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                currentUser?.username?.charAt(0).toUpperCase() || 'U'
+              )}
             </div>
             <div className="hidden md:flex flex-1 flex-col items-start min-w-0">
               <span className="text-sm font-semibold text-slate-900 dark:text-white truncate w-full text-left">

@@ -8,6 +8,7 @@ interface User {
   username: string;
   email: string;
   name?: string;
+  avatar?: string;
 }
 
 export default function SettingsPage() {
@@ -19,6 +20,9 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     fetchCurrentUser();
@@ -35,6 +39,8 @@ export default function SettingsPage() {
       if (!response.ok) throw new Error('Not authenticated');
       const data = await response.json();
       setCurrentUser(data.user);
+      setDisplayName(data.user.name || '');
+      setAvatarUrl(data.user.avatar || '');
     } catch (error) {
       console.error('Error fetching user:', error);
       window.location.href = '/login';
@@ -66,8 +72,64 @@ export default function SettingsPage() {
 
   const handleSaveProfile = async () => {
     setSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setSaving(false);
+    try {
+      const response = await fetch('/api/users/current_user', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({
+          name: displayName,
+          avatar: avatarUrl,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update profile');
+      }
+
+      const data = await response.json();
+      setCurrentUser(data.user);
+      alert('Profile updated successfully!');
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      alert('Failed to save profile changes.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('/api/users/profile/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to upload image');
+      }
+
+      const data = await response.json();
+      setAvatarUrl(data.url);
+    } catch (error: any) {
+      console.error('Error uploading avatar:', error);
+      alert(error.message || 'Failed to upload profile picture.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleDeleteAccount = async () => {
@@ -123,12 +185,35 @@ export default function SettingsPage() {
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Profile</h2>
             
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 pb-6 border-b border-slate-100 dark:border-slate-800">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-3xl font-bold text-white shadow-xl">
-                {currentUser?.username?.charAt(0).toUpperCase() || 'U'}
+              <div className="relative w-24 h-24 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  currentUser?.username?.charAt(0).toUpperCase() || 'U'
+                )}
+                {uploading && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
               </div>
-              <button className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                Change Avatar
-              </button>
+              <div className="flex flex-col gap-2">
+                <input
+                  type="file"
+                  id="avatar-upload"
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                />
+                <button 
+                  onClick={() => document.getElementById('avatar-upload')?.click()}
+                  disabled={uploading}
+                  className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                  {uploading ? 'Uploading...' : 'Change Avatar'}
+                </button>
+                <p className="text-xs text-slate-400">Recommended: Square image, max 10MB</p>
+              </div>
             </div>
 
             <div className="grid gap-6">
@@ -158,7 +243,8 @@ export default function SettingsPage() {
                 <input 
                   type="text" 
                   placeholder="Enter display name" 
-                  defaultValue={currentUser?.name || ''}
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
                   className="w-full p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
                 />
               </div>

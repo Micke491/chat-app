@@ -4,6 +4,7 @@ export interface IUser extends Document {
   username: string;
   email: string;
   password: string;
+  name?: string;
   bio?: string;
   avatar?: string;
   resetPasswordToken?: string;
@@ -39,6 +40,10 @@ const UserSchema = new Schema<IUser>(
     },
     avatar: {
       type: String,
+    },
+    name: {
+      type: String,
+      maxlength: [100, "Name cannot exceed 100 characters"],
     },
     // Removing 'default: undefined' to ensure Mongoose treats them as optional/nullable correctly
     resetPasswordToken: {

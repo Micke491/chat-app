@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useLayoutEffect } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import MessageStatusIcon from "./MessageStatusIcon";
@@ -13,6 +13,7 @@ interface Message {
     _id: string;
     username: string;
     email: string;
+    avatar?: string;
   };
   text: string;
   createdAt: string;
@@ -28,6 +29,7 @@ interface ChatWindowProps {
   chatId: string;
   currentUserId: string;
   recipientUsername?: string;
+  recipientAvatar?: string;
   onClose?: () => void;
 }
 
@@ -35,6 +37,7 @@ export default function ChatWindow({
   chatId,
   currentUserId,
   recipientUsername,
+  recipientAvatar,
   onClose,
 }: ChatWindowProps) {
   const router = useRouter();
@@ -185,11 +188,26 @@ export default function ChatWindow({
     fetchMessages();
   }, [chatId]);
 
-  useEffect(() => {
+  const [initialScrollDone, setInitialScrollDone] = useState(false);
+
+  useLayoutEffect(() => {
+    setInitialScrollDone(false);
+  }, [chatId]);
+  useLayoutEffect(() => {
     if (!loading && messages.length > 0 && !loadingMore) {
-      scrollToBottom();
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        requestAnimationFrame(() => {
+           if (messagesContainerRef.current) {
+             messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+             setInitialScrollDone(true);
+           }
+        });
+      }
+    } else if (!loading && messages.length === 0) {
+        setInitialScrollDone(true);
     }
-  }, [loading]);
+  }, [loading, chatId, messages.length, loadingMore]);
 
   const fetchMessages = async (beforeDate?: string) => {
     try {
@@ -251,7 +269,9 @@ export default function ChatWindow({
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   };
 
   const handleSend = async (e: React.FormEvent) => {
@@ -285,6 +305,7 @@ export default function ChatWindow({
           replyTo: replyingTo?._id,
         });
         setReplyingTo(null);
+        scrollToBottom(); // Scroll on send
       }
     } catch (error) {
       setNewMessage(messageText);
@@ -332,6 +353,7 @@ export default function ChatWindow({
           replyTo: replyingTo?._id,
         });
         setReplyingTo(null);
+        scrollToBottom(); // Scroll on upload
       }
     } catch (error) {
       console.error("Upload error:", error);
@@ -428,8 +450,12 @@ export default function ChatWindow({
               />
             </svg>
           </button>
-          <div className="flex items-center justify-center w-11 h-11 text-lg font-bold text-white rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm">
-            {recipientUsername?.charAt(0).toUpperCase() || "?"}
+          <div className="flex items-center justify-center w-11 h-11 text-lg font-bold text-white rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm overflow-hidden">
+            {recipientAvatar ? (
+              <img src={recipientAvatar} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              recipientUsername?.charAt(0).toUpperCase() || "?"
+            )}
           </div>
           <div>
             <h3 className="text-base font-semibold text-slate-900 dark:text-white leading-tight">
@@ -449,7 +475,7 @@ export default function ChatWindow({
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth"
+        className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth transition-opacity duration-200 ${initialScrollDone ? 'opacity-100' : 'opacity-0'}`}
       >
         {loadingMore && (
           <div className="flex justify-center py-2">
@@ -496,8 +522,12 @@ export default function ChatWindow({
                 >
                   {/* Avatar (Partner) */}
                   {!isOwn && (
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 select-none">
-                      {message.sender.username.charAt(0).toUpperCase()}
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 select-none overflow-hidden">
+                      {message.sender.avatar ? (
+                        <img src={message.sender.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                      ) : (
+                        message.sender.username.charAt(0).toUpperCase()
+                      )}
                     </div>
                   )}
 
@@ -574,6 +604,7 @@ export default function ChatWindow({
                               src={message.mediaUrl}
                               controls
                               className="w-full h-full object-contain max-h-[320px]"
+                              onLoadedData={scrollToBottom}
                             />
                           ) : (
                             <img
@@ -583,6 +614,7 @@ export default function ChatWindow({
                               onClick={() =>
                                 window.open(message.mediaUrl, "_blank")
                               }
+                              onLoad={scrollToBottom}
                             />
                           )}
                         </div>

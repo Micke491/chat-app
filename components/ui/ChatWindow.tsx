@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useLayoutEffect } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
+import { Mic, X, Send, Trash2, Play, Pause, Square } from "lucide-react";
 import MessageStatusIcon from "./MessageStatusIcon";
 
 interface Message {
@@ -22,7 +23,7 @@ interface Message {
   replyTo?: Message;
   isDeletedForEveryone?: boolean;
   mediaUrl?: string;
-  mediaType?: "image" | "video";
+  mediaType?: "image" | "video" | "audio";
 }
 
 interface ChatWindowProps {
@@ -58,6 +59,11 @@ export default function ChatWindow({
   const isTypingRef = useRef<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -274,6 +280,105 @@ export default function ChatWindow({
     }
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      setRecordingDuration(0);
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      alert("Could not access microphone.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        await sendAudioMessage(audioBlob);
+        const stream = mediaRecorderRef.current?.stream;
+        stream?.getTracks().forEach(track => track.stop());
+      };
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.onstop = () => {
+        const stream = mediaRecorderRef.current?.stream;
+        stream?.getTracks().forEach(track => track.stop());
+      };
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      setRecordingDuration(0);
+    }
+  };
+
+  const sendAudioMessage = async (audioBlob: Blob) => {
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", audioBlob, "voice_message.webm");
+
+    try {
+      const response = await fetch("/api/chat/media/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error("Upload failed");
+      const data = await response.json();
+
+      if (socket) {
+        socket.emit("send-new-message", {
+          chatId,
+          mediaUrl: data.url,
+          mediaType: "audio",
+          mediaPublicId: data.publicId,
+          replyTo: replyingTo?._id,
+        });
+        setReplyingTo(null);
+        scrollToBottom();
+      }
+    } catch (error) {
+      console.error("Audio upload error:", error);
+      alert("Failed to send voice message.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || sending || !socket) return;
@@ -343,7 +448,6 @@ export default function ChatWindow({
 
       const data = await response.json();
 
-      // Automatically send the message with the media
       if (socket) {
         socket.emit("send-new-message", {
           chatId,
@@ -353,7 +457,7 @@ export default function ChatWindow({
           replyTo: replyingTo?._id,
         });
         setReplyingTo(null);
-        scrollToBottom(); // Scroll on upload
+        scrollToBottom(); 
       }
     } catch (error) {
       console.error("Upload error:", error);
@@ -501,7 +605,8 @@ export default function ChatWindow({
               )}
 
               <div
-                className={`group flex flex-col ${isOwn ? "items-end" : "items-start"} mb-2`}
+                id={`message-${message._id}`}
+                className={`group flex flex-col ${isOwn ? "items-end" : "items-start"} mb-2 transition-all duration-300`}
               >
                 {/* Reply Context */}
                 {message.replyTo && !message.isDeletedForEveryone && (
@@ -545,12 +650,23 @@ export default function ChatWindow({
                     >
                       {!message.isDeletedForEveryone && message.replyTo && (
                         <div
+                          onClick={() => {
+                            const replyElement = document.getElementById(`message-${message.replyTo?._id}`);
+                            if (replyElement) {
+                              replyElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              // Add a brief highlight effect
+                              replyElement.classList.add('ring-2', 'ring-blue-500');
+                              setTimeout(() => {
+                                replyElement.classList.remove('ring-2', 'ring-blue-500');
+                              }, 2000);
+                            }
+                          }}
                           className={`
-                                    flex mb-2 p-2 rounded text-xs border-l-2 opacity-90
+                                    flex mb-2 p-2 rounded text-xs border-l-2 opacity-90 cursor-pointer hover:opacity-100 transition-opacity
                                     ${
                                       isOwn
-                                        ? "bg-blue-700/50 border-blue-300"
-                                        : "bg-slate-200 dark:bg-slate-700 border-slate-400"
+                                        ? "bg-blue-700/50 border-blue-300 hover:bg-blue-700/60"
+                                        : "bg-slate-200 dark:bg-slate-700 border-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600"
                                     }
                                 `}
                         >
@@ -562,17 +678,19 @@ export default function ChatWindow({
                               {message.replyTo.text ||
                                 (message.replyTo.mediaUrl
                                   ? message.replyTo.mediaType === "video"
-                                    ? "📹 Video"
-                                    : "🖼️ Photo"
+                                    ? "Video"
+                                    : message.replyTo.mediaType === "audio"
+                                      ? "Voice record"
+                                      : "Photo"
                                   : "")}
                             </p>
                           </div>
                           {message.replyTo.mediaUrl && (
                             <div className="flex-shrink-0 w-12 h-12 rounded overflow-hidden border border-white/20 ml-2">
                               {message.replyTo.mediaType === "video" ? (
-                                <div className="w-full h-full bg-slate-200 flex items-center justify-center">
+                                <div className="w-full h-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center">
                                   <svg
-                                    className="w-6 h-6 text-slate-500"
+                                    className="w-6 h-6 text-slate-500 dark:text-slate-300"
                                     fill="currentColor"
                                     viewBox="0 0 20 20"
                                   >
@@ -583,6 +701,10 @@ export default function ChatWindow({
                                       clipRule="evenodd"
                                     />
                                   </svg>
+                                </div>
+                              ) : message.replyTo.mediaType === "audio" ? (
+                                <div className="w-full h-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center">
+                                  <Mic className="w-6 h-6 text-slate-500 dark:text-slate-300" />
                                 </div>
                               ) : (
                                 <img
@@ -598,24 +720,93 @@ export default function ChatWindow({
 
                       {/* Only show media if it exists and message is not deleted */}
                       {message.mediaUrl && !message.isDeletedForEveryone && (
-                        <div className="mb-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 max-w-[320px] max-h-[320px] bg-slate-100 dark:bg-slate-800">
+                        <div className="mb-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 max-w-[320px] bg-slate-100 dark:bg-slate-800 relative group">
                           {message.mediaType === "video" ? (
-                            <video
-                              src={message.mediaUrl}
-                              controls
-                              className="w-full h-full object-contain max-h-[320px]"
-                              onLoadedData={scrollToBottom}
-                            />
+                            <div className="relative">
+                              <video
+                                id={`video-${message._id}`}
+                                src={message.mediaUrl}
+                                controls
+                                controlsList="nodownload nofullscreen noremoteplayback"
+                                disablePictureInPicture
+                                className="w-full max-h-[320px] object-contain"
+                                onLoadedData={scrollToBottom}
+                              />
+                              <button
+                                onClick={() => {
+                                  const video = document.getElementById(`video-${message._id}`) as HTMLVideoElement;
+                                  if (video) {
+                                    if (document.fullscreenElement) {
+                                      document.exitFullscreen();
+                                    } else {
+                                      video.requestFullscreen();
+                                    }
+                                  }
+                                }}
+                                className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Fullscreen"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                </svg>
+                              </button>
+                            </div>
+                          ) : message.mediaType === "audio" ? (
+                            <div className="flex items-center gap-2 p-3 min-w-[200px]">
+                              <audio 
+                                id={`audio-${message._id}`}
+                                controls 
+                                controlsList="nodownload noplaybackrate"
+                                src={message.mediaUrl} 
+                                className="flex-1 h-8" 
+                              />
+                              <div className="relative group/speed">
+                                <button
+                                  className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors flex-shrink-0"
+                                  title="Playback Speed"
+                                >
+                                  <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                  </svg>
+                                </button>
+                                <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg opacity-0 invisible group-hover/speed:opacity-100 group-hover/speed:visible transition-all min-w-[80px]">
+                                  {[0.5, 0.75, 1, 1.25, 1.5, 2].map(speed => (
+                                    <button
+                                      key={speed}
+                                      onClick={() => {
+                                        const audio = document.getElementById(`audio-${message._id}`) as HTMLAudioElement;
+                                        if (audio) audio.playbackRate = speed;
+                                      }}
+                                      className="w-full px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-left text-slate-700 dark:text-slate-300 first:rounded-t-lg last:rounded-b-lg"
+                                    >
+                                      {speed}x
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                           ) : (
-                            <img
-                              src={message.mediaUrl}
-                              alt="Shared media"
-                              className="w-full h-full object-cover cursor-pointer hover:opacity-95 transition-opacity max-h-[320px]"
-                              onClick={() =>
-                                window.open(message.mediaUrl, "_blank")
-                              }
-                              onLoad={scrollToBottom}
-                            />
+                            <>
+                              <img
+                                src={message.mediaUrl}
+                                alt="Shared media"
+                                className="w-full max-h-[320px] object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                                onClick={() =>
+                                  window.open(message.mediaUrl, "_blank")
+                                }
+                                onLoad={scrollToBottom}
+                              />
+                              <a
+                                href={message.mediaUrl}
+                                download
+                                className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Download"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                              </a>
+                            </>
                           )}
                         </div>
                       )}
@@ -772,14 +963,16 @@ export default function ChatWindow({
                       (replyingTo?.mediaUrl
                         ? replyingTo.mediaType === "video"
                           ? "Video"
-                          : "Photo"
+                          : replyingTo.mediaType === "audio"
+                            ? "Voice record"
+                            : "Photo"
                         : "")}
                 </span>
               </div>
               {replyingTo?.mediaUrl && (
                 <div className="flex-shrink-0 w-10 h-10 rounded overflow-hidden border border-slate-200 dark:border-slate-700">
                   {replyingTo.mediaType === "video" ? (
-                    <div className="w-full h-full bg-slate-200 flex items-center justify-center">
+                    <div className="w-full h-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
                       <svg
                         className="w-5 h-5 text-slate-500"
                         fill="currentColor"
@@ -792,6 +985,10 @@ export default function ChatWindow({
                           clipRule="evenodd"
                         />
                       </svg>
+                    </div>
+                  ) : replyingTo.mediaType === "audio" ? (
+                    <div className="w-full h-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+                      <Mic className="w-5 h-5 text-slate-500" />
                     </div>
                   ) : (
                     <img
@@ -825,110 +1022,146 @@ export default function ChatWindow({
         )}
 
         <form
-          className="max-w-4xl mx-auto flex items-end gap-3 px-4 py-2 bg-slate-50 dark:bg-slate-900 rounded-[28px] focus-within:ring-2 focus-within:ring-blue-500/20 transition-all border border-transparent focus-within:border-blue-500/30"
+          className={`max-w-4xl mx-auto flex items-center gap-3 px-4 py-2 bg-slate-50 dark:bg-slate-900 rounded-[28px] focus-within:ring-2 focus-within:ring-blue-500/20 transition-all border border-transparent focus-within:border-blue-500/30 ${
+            isRecording ? "ring-2 ring-red-500/20 border-red-500/30" : ""
+          }`}
           onSubmit={handleSend}
         >
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            accept="image/*,video/*"
-            onChange={handleFileUpload}
-          />
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 transition-all"
-          >
-            {uploading ? (
-              <div className="w-5 h-5 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
-            ) : (
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+          {isRecording ? (
+            <div className="flex-1 flex items-center gap-4 animate-in fade-in duration-200">
+                <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                <span className="font-mono text-slate-700 dark:text-slate-200 font-medium min-w-[50px]">
+                    {formatRecordingTime(recordingDuration)}
+                </span>
+                <div className="flex-1 text-xs text-slate-400">
+                    Recording...
+                </div>
+                 <button
+                    type="button"
+                    onClick={cancelRecording}
+                    className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-500 hover:text-red-500 transition-colors"
+                >
+                    <Trash2 className="w-5 h-5" />
+                </button>
+            </div>
+          ) : (
+            <>
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*,video/*,audio/*"
+                onChange={handleFileUpload}
+              />
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 transition-all"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                />
-              </svg>
-            )}
-          </button>
+                {uploading ? (
+                  <div className="w-5 h-5 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+                ) : (
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                    />
+                  </svg>
+                )}
+              </button>
 
-          <textarea
-            ref={inputRef}
-            value={newMessage}
-            onChange={(e) => {
-              setNewMessage(e.target.value);
+              <textarea
+                ref={inputRef}
+                value={newMessage}
+                onChange={(e) => {
+                  setNewMessage(e.target.value);
 
-              if (socket && e.target.value.trim() && !editingMessage) {
-                if (typingTimeoutRef.current)
-                  clearTimeout(typingTimeoutRef.current);
+                  if (socket && e.target.value.trim() && !editingMessage) {
+                    if (typingTimeoutRef.current)
+                      clearTimeout(typingTimeoutRef.current);
 
-                if (!isTypingRef.current) {
-                  socket.emit("user-typing", {
-                    chatId,
-                    username: recipientUsername || "You",
-                  });
-                  isTypingRef.current = true;
-                }
+                    if (!isTypingRef.current) {
+                      socket.emit("user-typing", {
+                        chatId,
+                        username: recipientUsername || "You",
+                      });
+                      isTypingRef.current = true;
+                    }
 
-                typingTimeoutRef.current = setTimeout(() => {
-                  if (socket) {
-                    socket.emit("user-stopped-typing", {
-                      chatId,
-                      username: recipientUsername || "You",
-                    });
-                    isTypingRef.current = false;
+                    typingTimeoutRef.current = setTimeout(() => {
+                      if (socket) {
+                        socket.emit("user-stopped-typing", {
+                          chatId,
+                          username: recipientUsername || "You",
+                        });
+                        isTypingRef.current = false;
+                      }
+                    }, 2000);
                   }
-                }, 2000);
-              }
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              editingMessage ? "Edit your message..." : "Type a message..."
-            }
-            rows={1}
-            disabled={sending}
-            className="flex-1 max-h-32 py-2.5 bg-transparent border-none focus:ring-0 text-[15px] text-slate-900 dark:text-white placeholder-slate-400 resize-none overflow-y-auto"
-          />
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  editingMessage ? "Edit your message..." : "Type a message..."
+                }
+                rows={1}
+                disabled={sending}
+                className="flex-1 max-h-32 py-2.5 bg-transparent border-none focus:ring-0 text-[15px] text-slate-900 dark:text-white placeholder-slate-400 resize-none overflow-y-auto"
+              />
+            </>
+          )}
 
-          <button
-            type="submit"
-            disabled={!newMessage.trim() || sending}
-            className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-blue-600 text-white transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100"
-          >
-            {sending ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : editingMessage ? (
-              <svg
-                className="w-5 h-5 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+          {isRecording ? (
+             <button
+                type="button"
+                onClick={stopRecording}
+                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-blue-600 text-white transition-all hover:scale-105 active:scale-95 shadow-md shadow-blue-500/20"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-            ) : (
-              <svg
-                className="w-5 h-5 translate-x-0.5"
-                fill="currentColor"
-                viewBox="0 0 20 20"
+                  <Send className="w-5 h-5" />
+              </button>
+          ) : (
+             <button
+                type={newMessage.trim() || sending ? "submit" : "button"}
+                onClick={!newMessage.trim() && !sending ? startRecording : undefined}
+                disabled={sending && !isRecording}
+                className={`flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 ${
+                    newMessage.trim() || sending 
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" 
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                }`}
               >
-                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-              </svg>
-            )}
-          </button>
+                {sending ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : newMessage.trim() ? (
+                   editingMessage ? (
+                    <svg
+                        className="w-5 h-5 text-white"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                    >
+                        <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                        />
+                    </svg>
+                   ) : (
+                    <Send className="w-5 h-5 translate-x-0.5" />
+                   )
+                ) : (
+                  <Mic className="w-5 h-5" />
+                )}
+              </button>
+          )}
         </form>
       </footer>
     </div>

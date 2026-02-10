@@ -26,7 +26,7 @@
     replyTo?: mongoose.Types.ObjectId;
     
     mediaUrl?: string;
-    mediaType?: 'image' | 'video';
+    mediaType?: 'image' | 'video' | 'audio';
     mediaPublicId?: string;
     
     createdAt: Date;
@@ -75,7 +75,7 @@
       },
       mediaType: {
         type: String,
-        enum: ['image', 'video'],
+        enum: ['image', 'video', 'audio'],
       },
       mediaPublicId: {
         type: String,

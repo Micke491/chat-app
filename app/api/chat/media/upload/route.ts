@@ -39,7 +39,11 @@ export async function POST(request: NextRequest) {
         if (file.size > maxSize) {
             return NextResponse.json({ error: 'File size exceeds 10MB limit' }, { status: 400 });
         }
-        const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
+        const mediaType = file.type.startsWith('video/') 
+            ? 'video' 
+            : file.type.startsWith('audio/') 
+                ? 'audio' 
+                : 'image';
 
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);

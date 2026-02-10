@@ -15,7 +15,7 @@ interface Chat {
   lastMessage?: {
     text?: string;
     mediaUrl?: string;
-    mediaType?: 'image' | 'video';
+    mediaType?: 'image' | 'video' | 'audio';
     createdAt: string;
   };
   updatedAt: string;
@@ -247,8 +247,9 @@ export default function ChatList({ currentUserId, onChatSelect, selectedChatId }
                   </div>
                   <p className={`text-sm truncate ${isUnread ? 'font-bold text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
                     {chat.lastMessage?.text || 
-                     (chat.lastMessage?.mediaType === 'image' ? 'Image' : 
+                     (chat.lastMessage?.mediaType === 'image' ? 'Photo' : 
                       chat.lastMessage?.mediaType === 'video' ? 'Video' : 
+                      chat.lastMessage?.mediaType === 'audio' ? 'Voice record' : 
                       'No messages yet')}
                   </p>
                 </div>

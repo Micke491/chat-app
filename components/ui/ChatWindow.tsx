@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback, useLayoutEffect } from "react";
+import {
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+  useLayoutEffect,
+} from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import { Mic, X, Send, Trash2, Play, Pause, Square } from "lucide-react";
 import MessageStatusIcon from "./MessageStatusIcon";
+import AudioPlayer from "./AudioPlayer";
 
 interface Message {
   status: "seen" | "sent" | "delivered";
@@ -202,16 +209,18 @@ export default function ChatWindow({
   useLayoutEffect(() => {
     if (!loading && messages.length > 0 && !loadingMore) {
       if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        messagesContainerRef.current.scrollTop =
+          messagesContainerRef.current.scrollHeight;
         requestAnimationFrame(() => {
-           if (messagesContainerRef.current) {
-             messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-             setInitialScrollDone(true);
-           }
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop =
+              messagesContainerRef.current.scrollHeight;
+            setInitialScrollDone(true);
+          }
         });
       }
     } else if (!loading && messages.length === 0) {
-        setInitialScrollDone(true);
+      setInitialScrollDone(true);
     }
   }, [loading, chatId, messages.length, loadingMore]);
 
@@ -276,7 +285,8 @@ export default function ChatWindow({
 
   const scrollToBottom = () => {
     if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      messagesContainerRef.current.scrollTop =
+        messagesContainerRef.current.scrollHeight;
     }
   };
 
@@ -307,10 +317,12 @@ export default function ChatWindow({
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: "audio/webm",
+        });
         await sendAudioMessage(audioBlob);
         const stream = mediaRecorderRef.current?.stream;
-        stream?.getTracks().forEach(track => track.stop());
+        stream?.getTracks().forEach((track) => track.stop());
       };
       mediaRecorderRef.current.stop();
       setIsRecording(false);
@@ -325,7 +337,7 @@ export default function ChatWindow({
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.onstop = () => {
         const stream = mediaRecorderRef.current?.stream;
-        stream?.getTracks().forEach(track => track.stop());
+        stream?.getTracks().forEach((track) => track.stop());
       };
       mediaRecorderRef.current.stop();
       setIsRecording(false);
@@ -457,7 +469,7 @@ export default function ChatWindow({
           replyTo: replyingTo?._id,
         });
         setReplyingTo(null);
-        scrollToBottom(); 
+        scrollToBottom();
       }
     } catch (error) {
       console.error("Upload error:", error);
@@ -556,7 +568,11 @@ export default function ChatWindow({
           </button>
           <div className="flex items-center justify-center w-11 h-11 text-lg font-bold text-white rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm overflow-hidden">
             {recipientAvatar ? (
-              <img src={recipientAvatar} alt="Avatar" className="w-full h-full object-cover" />
+              <img
+                src={recipientAvatar}
+                alt="Avatar"
+                className="w-full h-full object-cover"
+              />
             ) : (
               recipientUsername?.charAt(0).toUpperCase() || "?"
             )}
@@ -579,7 +595,7 @@ export default function ChatWindow({
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth transition-opacity duration-200 ${initialScrollDone ? 'opacity-100' : 'opacity-0'}`}
+        className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth transition-opacity duration-200 ${initialScrollDone ? "opacity-100" : "opacity-0"}`}
       >
         {loadingMore && (
           <div className="flex justify-center py-2">
@@ -629,7 +645,11 @@ export default function ChatWindow({
                   {!isOwn && (
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 select-none overflow-hidden">
                       {message.sender.avatar ? (
-                        <img src={message.sender.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                        <img
+                          src={message.sender.avatar}
+                          alt="Avatar"
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
                         message.sender.username.charAt(0).toUpperCase()
                       )}
@@ -651,13 +671,24 @@ export default function ChatWindow({
                       {!message.isDeletedForEveryone && message.replyTo && (
                         <div
                           onClick={() => {
-                            const replyElement = document.getElementById(`message-${message.replyTo?._id}`);
+                            const replyElement = document.getElementById(
+                              `message-${message.replyTo?._id}`,
+                            );
                             if (replyElement) {
-                              replyElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              replyElement.scrollIntoView({
+                                behavior: "smooth",
+                                block: "center",
+                              });
                               // Add a brief highlight effect
-                              replyElement.classList.add('ring-2', 'ring-blue-500');
+                              replyElement.classList.add(
+                                "ring-2",
+                                "ring-blue-500",
+                              );
                               setTimeout(() => {
-                                replyElement.classList.remove('ring-2', 'ring-blue-500');
+                                replyElement.classList.remove(
+                                  "ring-2",
+                                  "ring-blue-500",
+                                );
                               }, 2000);
                             }
                           }}
@@ -724,67 +755,16 @@ export default function ChatWindow({
                           {message.mediaType === "video" ? (
                             <div className="relative">
                               <video
-                                id={`video-${message._id}`}
                                 src={message.mediaUrl}
                                 controls
-                                controlsList="nodownload nofullscreen noremoteplayback"
+                                controlsList="noremoteplayback"
                                 disablePictureInPicture
                                 className="w-full max-h-[320px] object-contain"
                                 onLoadedData={scrollToBottom}
                               />
-                              <button
-                                onClick={() => {
-                                  const video = document.getElementById(`video-${message._id}`) as HTMLVideoElement;
-                                  if (video) {
-                                    if (document.fullscreenElement) {
-                                      document.exitFullscreen();
-                                    } else {
-                                      video.requestFullscreen();
-                                    }
-                                  }
-                                }}
-                                className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Fullscreen"
-                              >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                                </svg>
-                              </button>
                             </div>
                           ) : message.mediaType === "audio" ? (
-                            <div className="flex items-center gap-2 p-3 min-w-[200px]">
-                              <audio 
-                                id={`audio-${message._id}`}
-                                controls 
-                                controlsList="nodownload noplaybackrate"
-                                src={message.mediaUrl} 
-                                className="flex-1 h-8" 
-                              />
-                              <div className="relative group/speed">
-                                <button
-                                  className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors flex-shrink-0"
-                                  title="Playback Speed"
-                                >
-                                  <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                  </svg>
-                                </button>
-                                <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg opacity-0 invisible group-hover/speed:opacity-100 group-hover/speed:visible transition-all min-w-[80px]">
-                                  {[0.5, 0.75, 1, 1.25, 1.5, 2].map(speed => (
-                                    <button
-                                      key={speed}
-                                      onClick={() => {
-                                        const audio = document.getElementById(`audio-${message._id}`) as HTMLAudioElement;
-                                        if (audio) audio.playbackRate = speed;
-                                      }}
-                                      className="w-full px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-left text-slate-700 dark:text-slate-300 first:rounded-t-lg last:rounded-b-lg"
-                                    >
-                                      {speed}x
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
+                            <AudioPlayer src={message.mediaUrl!} />
                           ) : (
                             <>
                               <img
@@ -802,8 +782,18 @@ export default function ChatWindow({
                                 className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
                                 title="Download"
                               >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                  />
                                 </svg>
                               </a>
                             </>
@@ -1029,20 +1019,18 @@ export default function ChatWindow({
         >
           {isRecording ? (
             <div className="flex-1 flex items-center gap-4 animate-in fade-in duration-200">
-                <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                <span className="font-mono text-slate-700 dark:text-slate-200 font-medium min-w-[50px]">
-                    {formatRecordingTime(recordingDuration)}
-                </span>
-                <div className="flex-1 text-xs text-slate-400">
-                    Recording...
-                </div>
-                 <button
-                    type="button"
-                    onClick={cancelRecording}
-                    className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-500 hover:text-red-500 transition-colors"
-                >
-                    <Trash2 className="w-5 h-5" />
-                </button>
+              <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+              <span className="font-mono text-slate-700 dark:text-slate-200 font-medium min-w-[50px]">
+                {formatRecordingTime(recordingDuration)}
+              </span>
+              <div className="flex-1 text-xs text-slate-400">Recording...</div>
+              <button
+                type="button"
+                onClick={cancelRecording}
+                className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-500 hover:text-red-500 transition-colors"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
             </div>
           ) : (
             <>
@@ -1119,48 +1107,50 @@ export default function ChatWindow({
           )}
 
           {isRecording ? (
-             <button
-                type="button"
-                onClick={stopRecording}
-                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-blue-600 text-white transition-all hover:scale-105 active:scale-95 shadow-md shadow-blue-500/20"
-              >
-                  <Send className="w-5 h-5" />
-              </button>
+            <button
+              type="button"
+              onClick={stopRecording}
+              className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-blue-600 text-white transition-all hover:scale-105 active:scale-95 shadow-md shadow-blue-500/20"
+            >
+              <Send className="w-5 h-5" />
+            </button>
           ) : (
-             <button
-                type={newMessage.trim() || sending ? "submit" : "button"}
-                onClick={!newMessage.trim() && !sending ? startRecording : undefined}
-                disabled={sending && !isRecording}
-                className={`flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 ${
-                    newMessage.trim() || sending 
-                    ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" 
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
-                }`}
-              >
-                {sending ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : newMessage.trim() ? (
-                   editingMessage ? (
-                    <svg
-                        className="w-5 h-5 text-white"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                    >
-                        <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                        />
-                    </svg>
-                   ) : (
-                    <Send className="w-5 h-5 translate-x-0.5" />
-                   )
+            <button
+              type={newMessage.trim() || sending ? "submit" : "button"}
+              onClick={
+                !newMessage.trim() && !sending ? startRecording : undefined
+              }
+              disabled={sending && !isRecording}
+              className={`flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 ${
+                newMessage.trim() || sending
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+              }`}
+            >
+              {sending ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : newMessage.trim() ? (
+                editingMessage ? (
+                  <svg
+                    className="w-5 h-5 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
                 ) : (
-                  <Mic className="w-5 h-5" />
-                )}
-              </button>
+                  <Send className="w-5 h-5 translate-x-0.5" />
+                )
+              ) : (
+                <Mic className="w-5 h-5" />
+              )}
+            </button>
           )}
         </form>
       </footer>

@@ -9,9 +9,10 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
-import { Mic, X, Send, Trash2, Play, Pause, Square } from "lucide-react";
+import { Mic, X, Send, Trash2, Play, Pause, Square, Smile } from "lucide-react";
 import MessageStatusIcon from "./MessageStatusIcon";
 import AudioPlayer from "./AudioPlayer";
+import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
 
 interface Message {
   status: "seen" | "sent" | "delivered";
@@ -31,6 +32,15 @@ interface Message {
   isDeletedForEveryone?: boolean;
   mediaUrl?: string;
   mediaType?: "image" | "video" | "audio";
+  reactions?: {
+    userId: string;
+    emoji: string;
+    createdAt: string;
+    user?: {
+      username: string;
+      avatar?: string;
+    };
+  }[];
 }
 
 interface ChatWindowProps {
@@ -71,6 +81,23 @@ export default function ChatWindow({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target as Node)
+      ) {
+        setShowEmojiPicker(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -184,6 +211,66 @@ export default function ChatWindow({
         },
       );
 
+      socketInstance.on(
+        "message-reaction-added",
+        (data: {
+          chatId: string;
+          messageId: string;
+          reaction: {
+            userId: string;
+            emoji: string;
+            createdAt: string;
+            user?: { username: string; avatar?: string };
+          };
+        }) => {
+          if (data.chatId !== chatId) return;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m._id === data.messageId) {
+                const reactions = m.reactions || [];
+                if (
+                  reactions.some(
+                    (r) =>
+                      r.userId === data.reaction.userId &&
+                      r.emoji === data.reaction.emoji,
+                  )
+                ) {
+                  return m;
+                }
+                return { ...m, reactions: [...reactions, data.reaction] };
+              }
+              return m;
+            }),
+          );
+        },
+      );
+
+      socketInstance.on(
+        "message-reaction-removed",
+        (data: {
+          chatId: string;
+          messageId: string;
+          userId: string;
+          emoji: string;
+        }) => {
+          if (data.chatId !== chatId) return;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m._id === data.messageId) {
+                return {
+                  ...m,
+                  reactions: (m.reactions || []).filter(
+                    (r) =>
+                      !(r.userId === data.userId && r.emoji === data.emoji),
+                  ),
+                };
+              }
+              return m;
+            }),
+          );
+        },
+      );
+
       setSocket(socketInstance);
     };
 
@@ -206,6 +293,7 @@ export default function ChatWindow({
   useLayoutEffect(() => {
     setInitialScrollDone(false);
   }, [chatId]);
+
   useLayoutEffect(() => {
     if (!loading && messages.length > 0 && !loadingMore) {
       if (messagesContainerRef.current) {
@@ -422,7 +510,7 @@ export default function ChatWindow({
           replyTo: replyingTo?._id,
         });
         setReplyingTo(null);
-        scrollToBottom(); // Scroll on send
+        scrollToBottom();
       }
     } catch (error) {
       setNewMessage(messageText);
@@ -529,6 +617,25 @@ export default function ChatWindow({
       month: "short",
       day: "numeric",
       year: "numeric",
+    });
+  };
+
+  const handleReaction = (emojiData: EmojiClickData, messageId: string) => {
+    if (!socket) return;
+    socket.emit("add-reaction", {
+      chatId,
+      messageId,
+      emoji: emojiData.emoji,
+    });
+    setShowEmojiPicker(null);
+  };
+
+  const removeReaction = (messageId: string, emoji: string) => {
+    if (!socket) return;
+    socket.emit("remove-reaction", {
+      chatId,
+      messageId,
+      emoji,
     });
   };
 
@@ -679,7 +786,6 @@ export default function ChatWindow({
                                 behavior: "smooth",
                                 block: "center",
                               });
-                              // Add a brief highlight effect
                               replyElement.classList.add(
                                 "ring-2",
                                 "ring-blue-500",
@@ -749,7 +855,6 @@ export default function ChatWindow({
                         </div>
                       )}
 
-                      {/* Only show media if it exists and message is not deleted */}
                       {message.mediaUrl && !message.isDeletedForEveryone && (
                         <div className="mb-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 max-w-[320px] bg-slate-100 dark:bg-slate-800 relative group">
                           {message.mediaType === "video" ? (
@@ -808,14 +913,118 @@ export default function ChatWindow({
                       )}
                     </div>
 
-                    {/* Message Actions Menu (Visible on Hover) */}
+                    {/* Reactions Display (Stacked) */}
+                    {message.reactions && message.reactions.length > 0 && !message.isDeletedForEveryone && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className={`absolute -bottom-6 ${
+                          isOwn ? "right-0" : "left-0"
+                        } flex items-center z-10 cursor-pointer group/reactions`}
+                      >
+                        <div className={`
+                          flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 
+                          rounded-full px-1.5 py-0.5 shadow-sm hover:shadow-md transition-all duration-200 gap-1
+                          ${isOwn ? "flex-row-reverse" : "flex-row"}
+                        `}>
+                          <div className="flex -space-x-1.5">
+                            {Array.from(new Set(message.reactions.map((r) => r.emoji)))
+                              .slice(0, 3) // Show first 3 distinct emojis
+                              .map((emoji, idx) => (
+                                <span 
+                                  key={emoji} 
+                                  className="text-[13px] bg-white dark:bg-slate-800 rounded-full ring-1 ring-slate-100 dark:ring-slate-700"
+                                  style={{ zIndex: 10 - idx }}
+                                >
+                                  {emoji}
+                                </span>
+                              ))}
+                          </div>
+                          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 px-0.5">
+                            {message.reactions.length}
+                          </span>
+                        </div>
+                        
+                        {/* Hover Details Tooltip (with bridge to prevent closing) */}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 hidden group-hover/reactions:flex flex-col pb-3 z-50 pointer-events-auto">
+                           <div className="bg-slate-900 text-white p-2 rounded-lg text-[10px] whitespace-nowrap shadow-xl border border-slate-700 animate-in fade-in zoom-in duration-200">
+                             {Array.from(new Set(message.reactions.map(r => r.emoji))).map(emoji => {
+                               const userReacted = message.reactions!.some(r => r.userId === currentUserId && r.emoji === emoji);
+                               return (
+                                 <div 
+                                   key={emoji} 
+                                   className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors ${userReacted ? "hover:bg-red-500/20 text-blue-400" : "hover:bg-white/10"}`}
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     if (userReacted) {
+                                       removeReaction(message._id, emoji);
+                                     } else {
+                                       if (!socket) return;
+                                       socket.emit("add-reaction", {
+                                         chatId,
+                                         messageId: message._id,
+                                         emoji,
+                                       });
+                                     }
+                                   }}
+                                 >
+                                   <span>{emoji}</span>
+                                   <span className="opacity-70">{message.reactions!.filter(r => r.emoji === emoji).length}</span>
+                                   {userReacted && <span className="text-[8px] opacity-50 ml-1">(click to remove)</span>}
+                                 </div>
+                               );
+                             })}
+                           </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Emoji Picker Popover */}
+                    {showEmojiPicker === message._id && (
+                      <div
+                        ref={emojiPickerRef}
+                        onClick={(e) => e.stopPropagation()}
+                        className={`
+                          fixed z-[9999] shadow-2xl rounded-xl
+                          ${isOwn 
+                            ? "right-4 sm:right-auto sm:translate-x-0" 
+                            : "left-4 sm:left-auto sm:translate-x-0"
+                          }
+                          bottom-20 sm:bottom-auto sm:left-1/2 sm:-translate-x-1/2 sm:top-1/2 sm:-translate-y-1/2
+                        `}
+                      >
+                        <EmojiPicker
+                          onEmojiClick={(emojiData) =>
+                            handleReaction(emojiData, message._id)
+                          }
+                          theme={Theme.AUTO}
+                          skinTonesDisabled
+                          searchDisabled
+                          width={320}
+                          height={400}
+                        />
+                      </div>
+                    )}
+
+                    {/* Message Actions Menu */}
                     {!message.isDeletedForEveryone && (
                       <div
                         className={`
-                                absolute top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover/bubble:opacity-100 transition-opacity p-1 bg-white dark:bg-slate-900 rounded-lg shadow-md border border-slate-100 dark:border-slate-800 z-10
-                                ${isOwn ? "-left-24" : "-right-24"}
-                            `}
+                          absolute top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover/bubble:opacity-100 transition-opacity p-1 bg-white dark:bg-slate-900 rounded-lg shadow-md border border-slate-100 dark:border-slate-800 z-10
+                          ${isOwn ? "-left-[120px]" : "-right-[120px]"}
+                        `}
                       >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowEmojiPicker(
+                              showEmojiPicker === message._id ? null : message._id
+                            );
+                          }}
+                          className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-yellow-500 dark:hover:text-yellow-400 transition-colors"
+                          title="React"
+                        >
+                          <Smile className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => startReply(message)}
                           className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500"
@@ -837,7 +1046,6 @@ export default function ChatWindow({
                         </button>
                         {isOwn && (
                           <>
-                            {/* Only allow editing if there's text */}
                             {message.text && (
                               <button
                                 onClick={() => startEdit(message)}
@@ -936,7 +1144,6 @@ export default function ChatWindow({
 
       {/* Input Form */}
       <footer className="p-4 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 shrink-0">
-        {/* Reply / Edit Banner */}
         {(replyingTo || editingMessage) && (
           <div className="max-w-4xl mx-auto mb-2 flex items-center justify-between px-4 py-2 bg-slate-100 dark:bg-slate-900 rounded-lg border-l-4 border-blue-500">
             <div className="flex items-center gap-3 flex-1 min-w-0">

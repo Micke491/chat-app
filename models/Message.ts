@@ -31,6 +31,12 @@
     
     createdAt: Date;
     updatedAt: Date;
+    
+    reactions: {
+      userId: mongoose.Types.ObjectId;
+      emoji: string;
+      createdAt: Date;
+    }[];
   }
 
   const ReadByEntrySchema = new Schema<IReadByEntry>(
@@ -123,6 +129,22 @@
         type: Schema.Types.ObjectId,
         ref: 'Message',
       },
+      
+      reactions: [{
+        userId: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        emoji: {
+          type: String,
+          required: true,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      }],
     },
     {
       timestamps: true,

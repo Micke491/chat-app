@@ -241,6 +241,7 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
             message.mediaUrl = undefined;
             message.mediaType = undefined;
             message.mediaPublicId = undefined;
+            message.reactions = []; // Clear reactions
             await message.save();
             
             io.to(chatId).emit("message-deleted", { messageId, chatId });
@@ -266,6 +267,83 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
           } catch(error) {
               console.error("Error marking read:", error);
           }
+      });
+
+      socket.on("add-reaction", async (data: { chatId: string; messageId: string; emoji: string }) => {
+        try {
+          await connectDB();
+          const { chatId, messageId, emoji } = data;
+          const userId = socket.data.userId;
+
+          if (!chatId || !messageId || !emoji) return;
+
+          const message = await Message.findById(messageId);
+          if (!message) return;
+
+          // Check if user already reacted with this emoji
+          const existingReaction = message.reactions?.find(
+            (r) => r.userId.toString() === userId && r.emoji === emoji
+          );
+
+          if (existingReaction) return;
+
+          // Add reaction
+          message.reactions = message.reactions || [];
+          message.reactions.push({
+            userId,
+            emoji,
+            createdAt: new Date(),
+          });
+
+          await message.save();
+
+          // Populate user info for the reaction
+          const reactionWithUser = {
+            userId,
+            emoji,
+            createdAt: new Date(),
+            user: await import("@/models/User").then(m => m.default.findById(userId).select("username avatar")),
+          };
+
+          io.to(chatId).emit("message-reaction-added", {
+             chatId,
+             messageId,
+             reaction: reactionWithUser,
+          });
+
+        } catch (error) {
+          console.error("Error adding reaction:", error);
+        }
+      });
+
+      socket.on("remove-reaction", async (data: { chatId: string; messageId: string; emoji: string }) => {
+        try {
+          await connectDB();
+          const { chatId, messageId, emoji } = data;
+          const userId = socket.data.userId;
+
+          if (!chatId || !messageId || !emoji) return;
+
+          const message = await Message.findById(messageId);
+          if (!message) return;
+
+          // Remove reaction
+          message.reactions = message.reactions?.filter(
+            (r) => !(r.userId.toString() === userId && r.emoji === emoji)
+          );
+
+          await message.save();
+
+          io.to(chatId).emit("message-reaction-removed", {
+            chatId,
+            messageId,
+            userId,
+            emoji,
+          });
+
+        } catch (error) {
+          console.error("Error removing reaction:", error);
+        }
       });
 
       socket.on("disconnect", () => {

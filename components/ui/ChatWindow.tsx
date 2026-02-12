@@ -9,9 +9,10 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
-import { Mic, X, Send, Trash2, Play, Pause, Square, Smile } from "lucide-react";
+import { Mic, X, Send, Trash2, Play, Pause, Square, Smile, ExternalLink } from "lucide-react";
 import MessageStatusIcon from "./MessageStatusIcon";
 import AudioPlayer from "./AudioPlayer";
+import LinkPreview from "./LinkPreview";
 import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
 
 interface Message {
@@ -907,9 +908,19 @@ export default function ChatWindow({
                       )}
 
                       {message.text && (
-                        <p className="whitespace-pre-wrap break-words">
-                          {message.text}
-                        </p>
+                        <>
+                          <p className="whitespace-pre-wrap break-words">
+                            {message.text}
+                          </p>
+                          {(() => {
+                            const urlRegex = /(https?:\/\/[^\s]+)/g;
+                            const matches = message.text.match(urlRegex);
+                            if (matches && matches.length > 0) {
+                              return <LinkPreview url={matches[0]} />;
+                            }
+                            return null;
+                          })()}
+                        </>
                       )}
                     </div>
 

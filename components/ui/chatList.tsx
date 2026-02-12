@@ -39,7 +39,6 @@ export default function ChatList({ currentUserId, onChatSelect, selectedChatId }
     fetchChats();
   }, []);
 
-  // Socket initialization and event listening
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token || !currentUserId) return;
@@ -47,7 +46,6 @@ export default function ChatList({ currentUserId, onChatSelect, selectedChatId }
     let socket = socketRef.current;
 
     if (!socket) {
-      // Initialize socket
       socket = io(process.env.NEXT_PUBLIC_SITE_URL!, {
         path: '/api/socket/server',
         auth: { token },

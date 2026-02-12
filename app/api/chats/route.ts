@@ -24,7 +24,6 @@ export async function GET(request: Request) {
             .sort({ updatedAt: -1 })
             .lean();
 
-        // Calculate unread messages for each chat
         const unreadCounts = await Message.aggregate([
             {
                 $match: {

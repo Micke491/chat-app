@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
-import { Mic, X, Send, Trash2, Play, Pause, Square, Smile, ExternalLink } from "lucide-react";
+import { Mic, X, Send, Trash2, Play, Pause, Square, Smile, ExternalLink, Search } from "lucide-react";
 import MessageStatusIcon from "./MessageStatusIcon";
 import AudioPlayer from "./AudioPlayer";
 import LinkPreview from "./LinkPreview";
@@ -52,6 +52,31 @@ interface ChatWindowProps {
   onClose?: () => void;
 }
 
+const HighlightText = ({ text, highlight }: { text: string; highlight: string }) => {
+  if (!highlight.trim()) {
+    return <p className="whitespace-pre-wrap break-words">{text}</p>;
+  }
+
+  const parts = text.split(new RegExp(`(${highlight})`, "gi"));
+
+  return (
+    <p className="whitespace-pre-wrap break-words">
+      {parts.map((part, i) =>
+        part.toLowerCase() === highlight.toLowerCase() ? (
+          <mark
+            key={i}
+            className="bg-yellow-300 dark:bg-yellow-600/50 text-slate-900 dark:text-white rounded-sm px-0.5"
+          >
+            {part}
+          </mark>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </p>
+  );
+};
+
 export default function ChatWindow({
   chatId,
   currentUserId,
@@ -84,6 +109,8 @@ export default function ChatWindow({
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -653,7 +680,7 @@ export default function ChatWindow({
     <div className="flex flex-col h-full bg-white dark:bg-slate-950">
       {/* Chat Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shrink-0 z-10">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <button
             onClick={() => (onClose ? onClose() : router.push("/chat"))}
             className="flex items-center justify-center w-9 h-9 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors md:hidden"
@@ -674,29 +701,66 @@ export default function ChatWindow({
               />
             </svg>
           </button>
-          <div className="flex items-center justify-center w-11 h-11 text-lg font-bold text-white rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm overflow-hidden">
-            {recipientAvatar ? (
-              <img
-                src={recipientAvatar}
-                alt="Avatar"
-                className="w-full h-full object-cover"
+          {!showSearch ? (
+            <>
+              <div className="flex items-center justify-center w-11 h-11 text-lg font-bold text-white rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm overflow-hidden shrink-0">
+                {recipientAvatar ? (
+                  <img
+                    src={recipientAvatar}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  recipientUsername?.charAt(0).toUpperCase() || "?"
+                )}
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white leading-tight truncate">
+                  {recipientUsername || "Chat"}
+                </h3>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Active now
+                  </span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center bg-slate-100 dark:bg-slate-800 rounded-full px-4 py-1.5 animate-in slide-in-from-right-4 duration-300">
+              <Search className="w-4 h-4 text-slate-400 mr-2" />
+              <input
+                autoFocus
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search messages..."
+                className="flex-1 bg-transparent border-none outline-none text-sm text-slate-900 dark:text-white placeholder:text-slate-500"
               />
-            ) : (
-              recipientUsername?.charAt(0).toUpperCase() || "?"
-            )}
-          </div>
-          <div>
-            <h3 className="text-base font-semibold text-slate-900 dark:text-white leading-tight">
-              {recipientUsername || "Chat"}
-            </h3>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                Active now
-              </span>
+              <button
+                onClick={() => {
+                  setShowSearch(false);
+                  setSearchQuery("");
+                }}
+                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          </div>
+          )}
         </div>
+
+        {!showSearch && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSearch(true)}
+              className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+              title="Search"
+            >
+              <Search className="w-5 h-5" />
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Messages Area */}
@@ -711,7 +775,12 @@ export default function ChatWindow({
           </div>
         )}
 
-        {messages.map((message, index) => {
+        {(searchQuery.trim()
+          ? messages.filter((m) =>
+              m.text?.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+          : messages
+        ).map((message, index) => {
           const isOwn = message.sender._id === currentUserId;
           const showDate =
             index === 0 ||
@@ -909,9 +978,10 @@ export default function ChatWindow({
 
                       {message.text && (
                         <>
-                          <p className="whitespace-pre-wrap break-words">
-                            {message.text}
-                          </p>
+                          <HighlightText
+                            text={message.text}
+                            highlight={searchQuery}
+                          />
                           {(() => {
                             const urlRegex = /(https?:\/\/[^\s]+)/g;
                             const matches = message.text.match(urlRegex);

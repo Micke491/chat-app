@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import SideBar from '@/components/ui/sideBar';
+import SideBar from '@/components/layout/Sidebar';
 
 interface User {
   _id: string;

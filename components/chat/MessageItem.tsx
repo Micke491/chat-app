@@ -2,10 +2,10 @@ import React, { useRef, useEffect } from "react";
 import { Mic, Smile } from "lucide-react";
 import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
 import { Message } from "../../types/chat";
-import MessageStatusIcon from "./MessageStatusIcon";
-import AudioPlayer from "./AudioPlayer";
-import LinkPreview from "./LinkPreview";
-import HighlightText from "./HighlightText";
+import MessageStatusIcon from "../ui/MessageStatusIcon";
+import AudioPlayer from "../ui/AudioPlayer";
+import LinkPreview from "../ui/LinkPreview";
+import HighlightText from "../ui/HighlightText";
 import { Socket } from "socket.io-client";
 
 interface MessageItemProps {

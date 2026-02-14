@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import ChatList from "@/components/ui/chatList";
-import ChatWindow from "@/components/ui/ChatWindow";
-import NewChatModal from "@/components/ui/Newchatmodal";
-import SideBar from "@/components/ui/sideBar";
+import ChatList from "@/components/chat/ChatList";
+import ChatWindow from "@/components/chat/ChatWindow";
+import NewChatModal from "@/components/chat/NewChatModal";
+import SideBar from "@/components/layout/Sidebar";
 
 interface User {
   _id: string;

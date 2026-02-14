@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import ChatPageContent from "@/components/ui/ChatPageContent";
+import ChatPageContent from "@/components/chat/ChatPageContent";
 
 interface PageProps {
   params: Promise<{ chatId: string }>;

@@ -142,7 +142,7 @@ func InitiateCall(c *gin.Context) {
 
 	if isGroupCall {
 		chatOID = chat.ID
-		
+
 		var participants []models.User
 		cursor, _ := db.UserCollection.Find(c, bson.M{"_id": bson.M{"$in": chat.Participants}})
 		cursor.All(c, &participants)
@@ -151,7 +151,7 @@ func InitiateCall(c *gin.Context) {
 			if p.ID.Hex() == req.CallerID {
 				continue
 			}
-			
+
 			callerBlockedThem := false
 			for _, b := range caller.BlockedUsers {
 				if b == p.ID {
@@ -159,7 +159,7 @@ func InitiateCall(c *gin.Context) {
 					break
 				}
 			}
-			
+
 			theyBlockedCaller := false
 			for _, b := range p.BlockedUsers {
 				if b == caller.ID {
@@ -167,7 +167,7 @@ func InitiateCall(c *gin.Context) {
 					break
 				}
 			}
-			
+
 			if callerBlockedThem || theyBlockedCaller {
 				continue
 			}
@@ -214,7 +214,7 @@ func InitiateCall(c *gin.Context) {
 		if chat.Status == "pending" {
 			title = "Chat Request"
 			bodyText = fmt.Sprintf("%s requested to chat with you", req.CallerName)
-			dataType = "message"
+			dataType = "request"
 			category = models.NotifyRequest
 		}
 		data := map[string]string{
@@ -224,6 +224,10 @@ func InitiateCall(c *gin.Context) {
 			"callType":   req.CallType,
 			"callerName": req.CallerName,
 			"chatId":     req.ChatID,
+		}
+		if dataType == "request" {
+			delete(data, "callId")
+			delete(data, "callType")
 		}
 		services.SendPushNotification(context.Background(), callRecipients, chatOID, category, title, bodyText, data)
 	}
@@ -410,14 +414,14 @@ func EndCall(c *gin.Context) {
 		return
 	}
 
-	val, err := getCache(c.Request.Context(), "call:" + req.CallID)
+	val, err := getCache(c.Request.Context(), "call:"+req.CallID)
 	if err == nil {
 		var state CallState
 		json.Unmarshal([]byte(val), &state)
 
-		delCache(c.Request.Context(), "user_status:" + state.CallerID)
-		delCache(c.Request.Context(), "user_status:" + state.CalleeID)
-		delCache(c.Request.Context(), "call:" + req.CallID)
+		delCache(c.Request.Context(), "user_status:"+state.CallerID)
+		delCache(c.Request.Context(), "user_status:"+state.CalleeID)
+		delCache(c.Request.Context(), "call:"+req.CallID)
 
 		otherUserID := state.CallerID
 		if req.UserID == state.CallerID {

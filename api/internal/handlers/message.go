@@ -265,10 +265,16 @@ func SendMessage(c *gin.Context) {
 		if bodyText == "" && newMessage.MediaType != "" {
 			bodyText = "Sent a " + newMessage.MediaType
 		}
+		dataType := "message"
+		if category == models.NotifyRequest {
+			dataType = "request"
+		}
 		data := map[string]string{
-			"type":      "message",
-			"chatId":    body.ChatID,
-			"messageId": newMessage.ID.Hex(),
+			"type":       dataType,
+			"chatId":     body.ChatID,
+			"messageId":  newMessage.ID.Hex(),
+			"senderId":   currentUser.ID.Hex(),
+			"senderName": currentUser.Username,
 		}
 		services.SendPushNotification(context.Background(), fcmRecipients, chat.ID, category, title, bodyText, data)
 	}
@@ -799,7 +805,7 @@ func DeleteMessage(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only sender can delete for everyone"})
 			return
 		}
-		
+
 		db.MessageCollection.UpdateOne(c, bson.M{"_id": messageID}, bson.M{
 			"$set": bson.M{
 				"isDeletedForEveryone": true,
@@ -811,15 +817,15 @@ func DeleteMessage(c *gin.Context) {
 				"isPinned":             false,
 			},
 		})
-		
+
 		utils.Broadcast("chat-"+msg.ChatID.Hex(), "message-deleted", gin.H{"messageId": messageIDStr, "chatId": msg.ChatID.Hex()})
-		
+
 		for _, pid := range chat.Participants {
 			utils.Broadcast("user-"+pid.Hex(), "chat-update", gin.H{
 				"chatId": msg.ChatID.Hex(),
 				"lastMessage": gin.H{
-					"_id":             messageIDStr,
-					"text":            "This message was deleted",
+					"_id":                  messageIDStr,
+					"text":                 "This message was deleted",
 					"isDeletedForEveryone": true,
 				},
 			})

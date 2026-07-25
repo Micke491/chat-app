@@ -19,13 +19,56 @@ const expoPushEndpoint = "https://exp.host/--/api/v2/push/send"
 var expoHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
 type expoMessage struct {
-	To        string            `json:"to"`
-	Title     string            `json:"title"`
-	Body      string            `json:"body"`
-	Data      map[string]string `json:"data,omitempty"`
-	Sound     string            `json:"sound,omitempty"`
-	ChannelID string            `json:"channelId,omitempty"`
-	Priority  string            `json:"priority,omitempty"`
+	To         string            `json:"to"`
+	Title      string            `json:"title"`
+	Body       string            `json:"body"`
+	Data       map[string]string `json:"data,omitempty"`
+	Sound      string            `json:"sound,omitempty"`
+	ChannelID  string            `json:"channelId,omitempty"`
+	CategoryID string            `json:"categoryId,omitempty"`
+	Priority   string            `json:"priority,omitempty"`
+}
+
+// stackTag builds the value expo-notifications uses as the Android notification
+// tag: FirebaseMessagingDelegate reads data["tag"] and falls back to a unique
+// message id. Notifications sharing a tag replace each other in the tray, so
+// keying it per conversation collapses a burst of messages into one entry per
+// chat instead of one row per message, and keeps categories apart. Returns ""
+// when there is no stable id, which keeps the default per-message behaviour
+// rather than collapsing unrelated notifications onto each other.
+func stackTag(category string, data map[string]string) string {
+	switch category {
+	case models.NotifyCall:
+		if id := data["callId"]; id != "" {
+			return "call:" + id
+		}
+	case models.NotifyRequest:
+		if id := data["chatId"]; id != "" {
+			return "request:" + id
+		}
+	default:
+		if id := data["chatId"]; id != "" {
+			return "chat:" + id
+		}
+	}
+	return ""
+}
+
+// channelForCategory maps a category onto its Android channel and delivery
+// priority. One channel per category is what makes the system stack them
+// separately, and lets a user silence group chats without losing call alerts.
+// These ids must match the ones created in the app's registerPush.ts.
+func channelForCategory(category string) (channelID, priority string) {
+	switch category {
+	case models.NotifyCall:
+		return "calls", "high"
+	case models.NotifyRequest:
+		return "chat_requests", "high"
+	case models.NotifyGroup:
+		return "messages_group", "high"
+	default:
+		return "messages_direct", "high"
+	}
 }
 
 type expoTicketResponse struct {
@@ -65,11 +108,20 @@ func SendPushNotification(ctx context.Context, userIDs []bson.ObjectID, chatID b
 		return
 	}
 
-	channelID := "default"
-	priority := "default"
-	if category == models.NotifyCall {
-		channelID = "calls"
-		priority = "high"
+	channelID, priority := channelForCategory(category)
+
+	payloadData := make(map[string]string, len(data)+2)
+	for k, v := range data {
+		payloadData[k] = v
+	}
+	payloadData["category"] = category
+	if payloadData["chatId"] == "" && !chatID.IsZero() {
+		payloadData["chatId"] = chatID.Hex()
+	}
+	if payloadData["tag"] == "" {
+		if tag := stackTag(category, payloadData); tag != "" {
+			payloadData["tag"] = tag
+		}
 	}
 
 	messages := make([]expoMessage, 0, len(sessions))
@@ -79,13 +131,14 @@ func SendPushNotification(ctx context.Context, userIDs []bson.ObjectID, chatID b
 			continue
 		}
 		messages = append(messages, expoMessage{
-			To:        s.ExpoPushToken,
-			Title:     title,
-			Body:      body,
-			Data:      data,
-			Sound:     "default",
-			ChannelID: channelID,
-			Priority:  priority,
+			To:         s.ExpoPushToken,
+			Title:      title,
+			Body:       body,
+			Data:       payloadData,
+			Sound:      "default",
+			ChannelID:  channelID,
+			CategoryID: category,
+			Priority:   priority,
 		})
 		tokensByIndex = append(tokensByIndex, s.ExpoPushToken)
 	}

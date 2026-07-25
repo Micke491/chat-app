@@ -22,8 +22,10 @@ type expoMessage struct {
 	To         string            `json:"to"`
 	Title      string            `json:"title"`
 	Body       string            `json:"body"`
+	Subtitle   string            `json:"subtitle,omitempty"`
 	Data       map[string]string `json:"data,omitempty"`
 	Sound      string            `json:"sound,omitempty"`
+	Badge      *int              `json:"badge,omitempty"`
 	ChannelID  string            `json:"channelId,omitempty"`
 	CategoryID string            `json:"categoryId,omitempty"`
 	Priority   string            `json:"priority,omitempty"`
@@ -54,23 +56,6 @@ func stackTag(category string, data map[string]string) string {
 	return ""
 }
 
-// channelForCategory maps a category onto its Android channel and delivery
-// priority. One channel per category is what makes the system stack them
-// separately, and lets a user silence group chats without losing call alerts.
-// These ids must match the ones created in the app's registerPush.ts.
-func channelForCategory(category string) (channelID, priority string) {
-	switch category {
-	case models.NotifyCall:
-		return "calls", "high"
-	case models.NotifyRequest:
-		return "chat_requests", "high"
-	case models.NotifyGroup:
-		return "messages_group", "high"
-	default:
-		return "messages_direct", "high"
-	}
-}
-
 type expoTicketResponse struct {
 	Data []struct {
 		Status  string `json:"status"`
@@ -82,10 +67,28 @@ type expoTicketResponse struct {
 	} `json:"data"`
 }
 
+// SendPushNotification fans a notification out to every device of every
+// recipient. It returns immediately: all of its work - preference filtering,
+// unread counting, token lookup, HTTP - happens on a background goroutine, so a
+// slow push never delays the request that triggered it. Both call sites already
+// pass context.Background(), so nothing observes the result.
 func SendPushNotification(ctx context.Context, userIDs []bson.ObjectID, chatID bson.ObjectID, category, title, body string, data map[string]string) {
 	if len(userIDs) == 0 {
 		return
 	}
+
+	recipients := append([]bson.ObjectID(nil), userIDs...)
+	payload := make(map[string]string, len(data)+2)
+	for k, v := range data {
+		payload[k] = v
+	}
+
+	go deliverPush(recipients, chatID, category, title, body, payload)
+}
+
+func deliverPush(userIDs []bson.ObjectID, chatID bson.ObjectID, category, title, body string, data map[string]string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	activeRecipientIDs := filterRecipients(ctx, userIDs, chatID, category)
 	if len(activeRecipientIDs) == 0 {
@@ -107,47 +110,86 @@ func SendPushNotification(ctx context.Context, userIDs []bson.ObjectID, chatID b
 		log.Printf("Failed to decode sessions for push: %v", err)
 		return
 	}
-
-	channelID, priority := channelForCategory(category)
-
-	payloadData := make(map[string]string, len(data)+2)
-	for k, v := range data {
-		payloadData[k] = v
+	if len(sessions) == 0 {
+		return
 	}
-	payloadData["category"] = category
-	if payloadData["chatId"] == "" && !chatID.IsZero() {
-		payloadData["chatId"] = chatID.Hex()
+
+	data["category"] = category
+	if data["chatId"] == "" && !chatID.IsZero() {
+		data["chatId"] = chatID.Hex()
 	}
-	if payloadData["tag"] == "" {
-		if tag := stackTag(category, payloadData); tag != "" {
-			payloadData["tag"] = tag
+	if data["tag"] == "" {
+		if tag := stackTag(category, data); tag != "" {
+			data["tag"] = tag
 		}
 	}
 
-	messages := make([]expoMessage, 0, len(sessions))
-	tokensByIndex := make([]string, 0, len(sessions))
-	for _, s := range sessions {
-		if s.ExpoPushToken == "" {
-			continue
-		}
-		messages = append(messages, expoMessage{
-			To:         s.ExpoPushToken,
-			Title:      title,
-			Body:       body,
-			Data:       payloadData,
-			Sound:      "default",
-			ChannelID:  channelID,
-			CategoryID: category,
-			Priority:   priority,
-		})
-		tokensByIndex = append(tokensByIndex, s.ExpoPushToken)
-	}
+	stats := unreadStats(ctx, activeRecipientIDs, chatID)
 
+	messages, tokens := buildExpoMessages(sessions, stats, category, title, body, data)
 	if len(messages) == 0 {
 		return
 	}
 
-	go sendExpoBatches(messages, tokensByIndex)
+	sendExpoBatches(messages, tokens)
+}
+
+// stacksMessages reports whether this kind of push accumulates in the tray. Only
+// chat messages do; a call or a request is a single event, and labelling one
+// "3 new messages" would be a lie.
+func stacksMessages(category string) bool {
+	return category == models.NotifyDirect || category == models.NotifyGroup
+}
+
+// buildExpoMessages renders one Expo message per device. Title, body and data
+// are shared, but the unread subtitle and the icon badge are per recipient -
+// which is the whole reason this loop cannot hoist a single payload.
+func buildExpoMessages(
+	sessions []models.Session,
+	stats map[bson.ObjectID]unreadStat,
+	category, title, body string,
+	data map[string]string,
+) ([]expoMessage, []string) {
+	channelID, priority := channelForPush(category, data)
+	categoryID := categoryIDForPush(category, data)
+
+	messages := make([]expoMessage, 0, len(sessions))
+	tokens := make([]string, 0, len(sessions))
+
+	for _, s := range sessions {
+		if s.ExpoPushToken == "" {
+			continue
+		}
+
+		stat := stats[s.UserID]
+
+		subtitle := ""
+		if stacksMessages(category) {
+			subtitle = unreadSubtitle(stat.InChat)
+		}
+
+		var badge *int
+		if stat.Total > 0 {
+			total := stat.Total
+			badge = &total
+		}
+
+		messages = append(messages, expoMessage{
+			To:         s.ExpoPushToken,
+			Title:      title,
+			Body:       body,
+			Subtitle:   subtitle,
+			Data:       data,
+			Sound:      "default",
+			Badge:      badge,
+			ChannelID:  channelID,
+			CategoryID: categoryID,
+			Priority:   priority,
+		})
+		tokens = append(tokens, s.ExpoPushToken)
+	}
+
+	return messages, tokens
 }
 
 func filterRecipients(ctx context.Context, userIDs []bson.ObjectID, chatID bson.ObjectID, category string) []bson.ObjectID {

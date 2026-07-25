@@ -207,29 +207,29 @@ func InitiateCall(c *gin.Context) {
 	}
 
 	if len(callRecipients) > 0 {
-		title := "Incoming Call"
-		bodyText := fmt.Sprintf("%s is calling you (%s call)", req.CallerName, req.CallType)
-		dataType := "call"
+		var pushCopy services.PushCopy
 		category := models.NotifyCall
+		dataType := services.PushTypeCall
+
 		if chat.Status == "pending" {
-			title = "Chat Request"
-			bodyText = fmt.Sprintf("%s requested to chat with you", req.CallerName)
-			dataType = "request"
+			pushCopy = services.RequestPushCopy(req.CallerName)
 			category = models.NotifyRequest
+			dataType = services.PushTypeRequest
+		} else {
+			pushCopy = services.CallPushCopy(req.CallerName, req.CallType)
 		}
+
 		data := map[string]string{
 			"type":       dataType,
-			"callId":     callID,
 			"callerId":   req.CallerID,
-			"callType":   req.CallType,
 			"callerName": req.CallerName,
 			"chatId":     req.ChatID,
 		}
-		if dataType == "request" {
-			delete(data, "callId")
-			delete(data, "callType")
+		if dataType == services.PushTypeCall {
+			data["callId"] = callID
+			data["callType"] = req.CallType
 		}
-		services.SendPushNotification(context.Background(), callRecipients, chatOID, category, title, bodyText, data)
+		services.SendPushNotification(context.Background(), callRecipients, chatOID, category, pushCopy.Title, pushCopy.Body, data)
 	}
 
 	if req.ChatID != "" {
@@ -431,6 +431,33 @@ func EndCall(c *gin.Context) {
 		utils.Broadcast("user-"+otherUserID, "call_ended", map[string]interface{}{
 			"call_id": req.CallID,
 		})
+
+		if state.Status != "active" && req.UserID == state.CallerID && state.CalleeID != "" {
+			if calleeOID, err := bson.ObjectIDFromHex(state.CalleeID); err == nil {
+				missedCopy := services.MissedCallPushCopy(state.CallerName, state.CallType)
+				missedChatOID := bson.NilObjectID
+				if state.ChatID != "" {
+					if id, err := bson.ObjectIDFromHex(state.ChatID); err == nil {
+						missedChatOID = id
+					}
+				}
+				services.SendPushNotification(
+					context.Background(),
+					[]bson.ObjectID{calleeOID},
+					missedChatOID,
+					models.NotifyCall,
+					missedCopy.Title, missedCopy.Body,
+					map[string]string{
+						"type":       services.PushTypeMissedCall,
+						"callId":     req.CallID,
+						"callType":   state.CallType,
+						"callerId":   state.CallerID,
+						"callerName": state.CallerName,
+						"chatId":     state.ChatID,
+					},
+				)
+			}
+		}
 
 		var msg models.Message
 		err = db.MessageCollection.FindOne(c, bson.M{"mediaPublicId": req.CallID, "mediaType": "call"}).Decode(&msg)

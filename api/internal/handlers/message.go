@@ -249,26 +249,27 @@ func SendMessage(c *gin.Context) {
 		}
 	}
 	if len(fcmRecipients) > 0 {
-		title := currentUser.Username
-		bodyText := newMessage.Text
+		groupName := ""
+		if chat.Name != nil {
+			groupName = *chat.Name
+		}
+
+		var pushCopy services.PushCopy
 		category := models.NotifyDirect
-		if chat.Status == "pending" {
-			title = "Chat Request"
-			bodyText = currentUser.Username + " requested to chat with you"
+		dataType := services.PushTypeMessage
+
+		switch {
+		case chat.Status == "pending":
+			pushCopy = services.RequestPushCopy(currentUser.Username)
 			category = models.NotifyRequest
-		} else if chat.IsGroupChat {
+			dataType = services.PushTypeRequest
+		case chat.IsGroupChat:
+			pushCopy = services.MessagePushCopy(currentUser.Username, groupName, newMessage.Text, newMessage.MediaType, true, 0)
 			category = models.NotifyGroup
-			if chat.Name != nil && *chat.Name != "" {
-				title = *chat.Name + " (" + currentUser.Username + ")"
-			}
+		default:
+			pushCopy = services.MessagePushCopy(currentUser.Username, "", newMessage.Text, newMessage.MediaType, false, 0)
 		}
-		if bodyText == "" && newMessage.MediaType != "" {
-			bodyText = "Sent a " + newMessage.MediaType
-		}
-		dataType := "message"
-		if category == models.NotifyRequest {
-			dataType = "request"
-		}
+
 		data := map[string]string{
 			"type":       dataType,
 			"chatId":     body.ChatID,
@@ -276,7 +277,7 @@ func SendMessage(c *gin.Context) {
 			"senderId":   currentUser.ID.Hex(),
 			"senderName": currentUser.Username,
 		}
-		services.SendPushNotification(context.Background(), fcmRecipients, chat.ID, category, title, bodyText, data)
+		services.SendPushNotification(context.Background(), fcmRecipients, chat.ID, category, pushCopy.Title, pushCopy.Body, data)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": populatedMsg})

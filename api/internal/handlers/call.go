@@ -535,6 +535,17 @@ func fetchMeteredIceServers() ([]iceServer, error) {
 	return servers, nil
 }
 
+func hasRelay(servers []iceServer) bool {
+	for _, s := range servers {
+		for _, u := range s.URLs {
+			if strings.HasPrefix(u, "turn:") || strings.HasPrefix(u, "turns:") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func GetIceServers(c *gin.Context) {
 	servers := []iceServer{}
 
@@ -565,5 +576,22 @@ func GetIceServers(c *gin.Context) {
 		servers = append(servers, turnServer)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"iceServers": servers})
+	// Without a relay, peers behind carrier-grade NAT (any phone on mobile
+	// data) can never find a route, so the call sticks on "connecting".
+	if !hasRelay(servers) {
+		if fallback := strings.TrimSpace(config.AppConfig.FallbackTurnURLs); fallback != "" {
+			servers = append(servers, iceServer{
+				URLs:       splitAndTrim(fallback),
+				Username:   config.AppConfig.FallbackTurnUsername,
+				Credential: config.AppConfig.FallbackTurnCredential,
+			})
+		}
+	}
+
+	relay := hasRelay(servers)
+	if !relay {
+		log.Println("WARNING: no TURN relay available; calls will fail across NAT")
+	}
+
+	c.JSON(http.StatusOK, gin.H{"iceServers": servers, "hasRelay": relay})
 }

@@ -29,6 +29,9 @@ type Config struct {
 	TurnUsername   string
 	TurnCredential string
 	TurnSecret     string
+	FallbackTurnURLs       string
+	FallbackTurnUsername   string
+	FallbackTurnCredential string
 	MeteredDomain    string
 	MeteredSecretKey string
 	AppURL           string
@@ -64,6 +67,12 @@ func LoadConfig() {
 		TurnUsername:   getEnv("TURN_USERNAME", ""),
 		TurnCredential: getEnv("TURN_CREDENTIAL", ""),
 		TurnSecret:     getEnv("TURN_SECRET", ""),
+		// Secondary relay for when the primary TURN source is missing or
+		// rejects our credentials, so a broken key does not silently degrade
+		// to a STUN-only config that cannot traverse carrier-grade NAT.
+		FallbackTurnURLs:       getEnv("FALLBACK_TURN_URLS", ""),
+		FallbackTurnUsername:   getEnv("FALLBACK_TURN_USERNAME", ""),
+		FallbackTurnCredential: getEnv("FALLBACK_TURN_CREDENTIAL", ""),
 		MeteredDomain:    getEnv("METERED_DOMAIN", ""),
 		MeteredSecretKey: getEnv("METERED_SECRET_KEY", ""),
 		AppURL:           getEnv("APP_URL", "https://chat-app-gules-six-81.vercel.app"),

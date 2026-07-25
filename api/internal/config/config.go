@@ -29,6 +29,8 @@ type Config struct {
 	TurnUsername   string
 	TurnCredential string
 	TurnSecret     string
+	MeteredDomain    string
+	MeteredSecretKey string
 	AppURL           string
 	GeminiAPIKey     string
 }
@@ -62,6 +64,8 @@ func LoadConfig() {
 		TurnUsername:   getEnv("TURN_USERNAME", ""),
 		TurnCredential: getEnv("TURN_CREDENTIAL", ""),
 		TurnSecret:     getEnv("TURN_SECRET", ""),
+		MeteredDomain:    getEnv("METERED_DOMAIN", ""),
+		MeteredSecretKey: getEnv("METERED_SECRET_KEY", ""),
 		AppURL:           getEnv("APP_URL", "https://chat-app-gules-six-81.vercel.app"),
 		GeminiAPIKey:     getEnv("GEMINI_API_KEY", ""),
 	}

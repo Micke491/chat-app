@@ -482,16 +482,43 @@ func splitAndTrim(s string) []string {
 	return out
 }
 
-// GetIceServers returns the STUN/TURN configuration clients use to build
-// their RTCPeerConnection. STUN defaults to Google's free public servers.
-// A TURN relay is optional but improves connectivity behind strict NATs:
-// either static credentials (TURN_USERNAME/TURN_CREDENTIAL) or, when
-// TURN_SECRET is set, coturn-style time-limited credentials are issued.
+func fetchMeteredIceServers() ([]iceServer, error) {
+	domain := strings.TrimSpace(config.AppConfig.MeteredDomain)
+	key := strings.TrimSpace(config.AppConfig.MeteredSecretKey)
+	if domain == "" || key == "" {
+		return nil, nil
+	}
+
+	url := fmt.Sprintf("https://%s/api/v1/turn/credentials?apiKey=%s", domain, key)
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("metered API returned status %d", resp.StatusCode)
+	}
+
+	var servers []iceServer
+	if err := json.NewDecoder(resp.Body).Decode(&servers); err != nil {
+		return nil, err
+	}
+	return servers, nil
+}
+
 func GetIceServers(c *gin.Context) {
 	servers := []iceServer{}
 
 	if stun := strings.TrimSpace(config.AppConfig.StunURLs); stun != "" {
 		servers = append(servers, iceServer{URLs: splitAndTrim(stun)})
+	}
+
+	if metered, err := fetchMeteredIceServers(); err != nil {
+		log.Printf("Failed to fetch Metered ICE servers: %v\n", err)
+	} else if len(metered) > 0 {
+		servers = append(servers, metered...)
 	}
 
 	if turn := strings.TrimSpace(config.AppConfig.TurnURLs); turn != "" {

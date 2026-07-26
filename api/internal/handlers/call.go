@@ -494,9 +494,26 @@ func EndCall(c *gin.Context) {
 }
 
 type iceServer struct {
-	URLs       []string `json:"urls"`
-	Username   string   `json:"username,omitempty"`
-	Credential string   `json:"credential,omitempty"`
+	URLs       iceURLs `json:"urls"`
+	Username   string  `json:"username,omitempty"`
+	Credential string  `json:"credential,omitempty"`
+}
+
+type iceURLs []string
+
+func (u *iceURLs) UnmarshalJSON(data []byte) error {
+	var list []string
+	if err := json.Unmarshal(data, &list); err == nil {
+		*u = list
+		return nil
+	}
+
+	var single string
+	if err := json.Unmarshal(data, &single); err != nil {
+		return err
+	}
+	*u = iceURLs{single}
+	return nil
 }
 
 func splitAndTrim(s string) []string {

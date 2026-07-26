@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -512,7 +513,17 @@ func splitAndTrim(s string) []string {
 func fetchMeteredIceServers() ([]iceServer, error) {
 	domain := strings.TrimSpace(config.AppConfig.MeteredDomain)
 	key := strings.TrimSpace(config.AppConfig.MeteredSecretKey)
+	// Name the missing variable. Skipping silently here is why a half-configured
+	// deploy looks identical to a working one until a call fails.
 	if domain == "" || key == "" {
+		switch {
+		case domain == "" && key == "":
+			log.Println("ICE: METERED_DOMAIN and METERED_SECRET_KEY are both unset; skipping Metered TURN")
+		case domain == "":
+			log.Println("ICE: METERED_SECRET_KEY is set but METERED_DOMAIN is unset; skipping Metered TURN")
+		default:
+			log.Println("ICE: METERED_DOMAIN is set but METERED_SECRET_KEY is unset; skipping Metered TURN")
+		}
 		return nil, nil
 	}
 
@@ -525,13 +536,17 @@ func fetchMeteredIceServers() ([]iceServer, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("metered API returned status %d", resp.StatusCode)
+		// Metered explains the rejection in the body ("Invalid API Key"), and
+		// without it a bad key is indistinguishable from an outage.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("metered API at %s returned status %d: %s", domain, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var servers []iceServer
 	if err := json.NewDecoder(resp.Body).Decode(&servers); err != nil {
 		return nil, err
 	}
+	log.Printf("ICE: Metered returned %d server entries from %s (relay=%v)\n", len(servers), domain, hasRelay(servers))
 	return servers, nil
 }
 

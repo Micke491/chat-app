@@ -20,6 +20,7 @@ var MessageCollection *mongo.Collection
 var SessionCollection *mongo.Collection 
 var DraftCollection *mongo.Collection
 var BotChatCollection *mongo.Collection
+var AnnouncementCollection *mongo.Collection
 
 func ConnectMongo() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -46,6 +47,7 @@ func ConnectMongo() {
 	SessionCollection = db.Collection("sessions") 
 	DraftCollection = db.Collection("drafts")
 	BotChatCollection = db.Collection("bot_chats")
+	AnnouncementCollection = db.Collection("announcements")
 
 	log.Println("Successfully connected to MongoDB")
 

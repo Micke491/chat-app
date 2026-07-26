@@ -102,11 +102,13 @@ func main() {
 		api.GET("/geolocation/reverse", handlers.ReverseGeocode)
 
 		api.GET("/stories", handlers.GetAllStories)
-		api.POST("/stories", middleware.RateLimiter(10, 5*time.Minute, "stories:create"), handlers.CreateStory)
 		api.GET("/stories/:userId", handlers.GetUserStories)
 		api.POST("/stories/:userId", handlers.MarkStoryViewed)
 
 		api.POST("/reports", middleware.RateLimiter(5, 5*time.Minute, "reports:create"), handlers.CreateReport)
+
+		api.GET("/announcements", handlers.GetAnnouncements)
+		api.POST("/announcements/:id/read", handlers.DismissAnnouncement)
 
 		api.GET("/url-metadata", middleware.RateLimiter(30, time.Minute, "url-metadata"), handlers.GetURLMetadata)
 
@@ -115,32 +117,19 @@ func main() {
 		api.POST("/chats/:id/reject", handlers.RejectChatRequest)
 
 		api.GET("/chats", handlers.GetChats)
-		api.POST("/chats", middleware.RateLimiter(5, 5*time.Minute, "chat:create"), handlers.CreateChat)
-		api.POST("/chats/GroupChat", handlers.CreateGroupChat)
 		api.DELETE("/chats/:id", handlers.HideChat)
-		api.POST("/chat/typing", middleware.RateLimiter(60, time.Minute, "chat:typing"), handlers.TypingIndicator)
 
-		api.POST("/chat/message", middleware.RateLimiter(60, time.Minute, "message:send"), handlers.SendMessage)
 		api.GET("/chat/message", handlers.GetMessages)
 		api.PATCH("/chat/message/messages/:messageId/status", handlers.UpdateMessageStatus)
 		api.POST("/chat/message/messages/:messageId/status", handlers.UpdateMessageStatus) // Bulk
-		api.POST("/chat/message/messages/:messageId/reaction", handlers.ManageReaction)
-		api.DELETE("/chat/message/messages/:messageId/reaction", handlers.ManageReaction)
-		api.PATCH("/chat/message/messages/:messageId/edit", handlers.EditMessage)
 		api.DELETE("/chat/message/messages/:messageId/delete", handlers.DeleteMessage)
 
 		api.GET("/chat/:chatId", handlers.GetChatById)
 		api.DELETE("/chat/:chatId", handlers.LeaveChat)
-		api.PATCH("/chat/:chatId/update", handlers.UpdateGroupChat)
-		api.POST("/chat/:chatId/remove", handlers.RemoveParticipant)
 		api.POST("/chat/:chatId/leave", handlers.LeaveChat)
-		api.POST("/chat/:chatId/add", handlers.AddParticipant)
 		api.GET("/chat/:chatId/pinned", handlers.GetPinnedMessages)
-		api.POST("/chat/:chatId/pinned", handlers.PinMessage)
-		api.DELETE("/chat/:chatId/pinned", handlers.UnpinMessage)
 
 		api.GET("/chat/media/list", handlers.ListMedia)
-		api.POST("/chat/media/upload", middleware.RateLimiter(10, time.Minute, "chat:media:upload"), handlers.UploadMedia)
 
 		api.GET("/sync", handlers.SyncData)
 
@@ -148,8 +137,6 @@ func main() {
 		api.GET("/chat/draft", handlers.GetDraft)
 		api.DELETE("/chat/draft", handlers.DeleteDraft)
 
-		api.POST("/call/initiate", handlers.InitiateCall)
-		api.POST("/call/accept", handlers.AcceptCall)
 		api.POST("/call/reject", handlers.RejectCall)
 		api.POST("/call/end", handlers.EndCall)
 		api.GET("/call/ice-servers", handlers.GetIceServers)
@@ -159,11 +146,41 @@ func main() {
 			bot.GET("/chats", handlers.GetBotChats)
 			bot.POST("/chats", middleware.RateLimiter(10, time.Minute, "bot:create"), handlers.CreateBotChat)
 			bot.GET("/chats/:id", handlers.GetBotChat)
-			bot.POST("/chats/:id/message", middleware.GeminiRateLimiter(), handlers.SendBotMessage)
 			bot.DELETE("/chats/:id", handlers.DeleteBotChat)
 			bot.PATCH("/chats/:id", handlers.RenameBotChat)
 			bot.PATCH("/chats/:id/pin", handlers.PinBotChat)
 		}
+	}
+
+	// Everything that creates or broadcasts content. Banned and timed-out users
+	// are turned away here so a moderator action takes effect on the live
+	// session instead of waiting for the next login.
+	restricted := api.Group("")
+	restricted.Use(middleware.RequireActive())
+	{
+		restricted.POST("/stories", middleware.RateLimiter(10, 5*time.Minute, "stories:create"), handlers.CreateStory)
+
+		restricted.POST("/chats", middleware.RateLimiter(5, 5*time.Minute, "chat:create"), handlers.CreateChat)
+		restricted.POST("/chats/GroupChat", handlers.CreateGroupChat)
+		restricted.POST("/chat/typing", middleware.RateLimiter(60, time.Minute, "chat:typing"), handlers.TypingIndicator)
+
+		restricted.POST("/chat/message", middleware.RateLimiter(60, time.Minute, "message:send"), handlers.SendMessage)
+		restricted.POST("/chat/message/messages/:messageId/reaction", handlers.ManageReaction)
+		restricted.DELETE("/chat/message/messages/:messageId/reaction", handlers.ManageReaction)
+		restricted.PATCH("/chat/message/messages/:messageId/edit", handlers.EditMessage)
+
+		restricted.PATCH("/chat/:chatId/update", handlers.UpdateGroupChat)
+		restricted.POST("/chat/:chatId/remove", handlers.RemoveParticipant)
+		restricted.POST("/chat/:chatId/add", handlers.AddParticipant)
+		restricted.POST("/chat/:chatId/pinned", handlers.PinMessage)
+		restricted.DELETE("/chat/:chatId/pinned", handlers.UnpinMessage)
+
+		restricted.POST("/chat/media/upload", middleware.RateLimiter(10, time.Minute, "chat:media:upload"), handlers.UploadMedia)
+
+		restricted.POST("/call/initiate", handlers.InitiateCall)
+		restricted.POST("/call/accept", handlers.AcceptCall)
+
+		restricted.POST("/bot/chats/:id/message", middleware.GeminiRateLimiter(), handlers.SendBotMessage)
 	}
 
 	go handlers.StartStoryCleanup()

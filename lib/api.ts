@@ -40,5 +40,20 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     }
   }
 
+  // A moderator ban or timeout comes back as a 403 on whatever the user was
+  // trying to do. Announce it so the banner can update without every call site
+  // having to know about moderation.
+  if (response.status === 403 && typeof window !== 'undefined') {
+    response
+      .clone()
+      .json()
+      .then((data) => {
+        if (data?.restricted || data?.banned) {
+          window.dispatchEvent(new CustomEvent('account-restricted', { detail: data }));
+        }
+      })
+      .catch(() => {});
+  }
+
   return response;
 }

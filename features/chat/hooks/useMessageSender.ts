@@ -177,6 +177,16 @@ export function useMessageSender({
     };
   }, []);
 
+  // A ban or timeout will reject this message every time it is retried, so it
+  // must leave the offline queue instead of being resent forever.
+  const rejectSend = useCallback(async (tempId: string, response: Response) => {
+    const data = await response.json().catch(() => ({}));
+    toast.error(data.message || "You are not allowed to send messages right now");
+    setMessages((prev) => prev.filter((m) => m._id !== tempId));
+    offlineQueueRef.current = offlineQueueRef.current.filter((item) => item.tempId !== tempId);
+    updateOfflineStorage(offlineQueueRef.current);
+  }, [setMessages]);
+
   const attemptSendMessage = useCallback(async (tempId: string, text: string, replyToId?: string) => {
     try {
       const response = await apiFetch("/api/chat/message", {
@@ -188,6 +198,11 @@ export function useMessageSender({
           replyTo: replyToId,
         }),
       });
+
+      if (response.status === 403) {
+        await rejectSend(tempId, response);
+        return;
+      }
 
       if (!response.ok) {
         throw new Error("Failed to send");
@@ -212,7 +227,7 @@ export function useMessageSender({
         updateOfflineStorage(offlineQueueRef.current);
       }
     }
-  }, [chatId, currentUserId, setMessages]);
+  }, [chatId, currentUserId, setMessages, rejectSend]);
 
   const attemptSendMedia = useCallback(async (tempId: string, mediaUrl: string, mediaType: any, mediaPublicId?: string, replyToId?: string) => {
     try {
@@ -227,6 +242,11 @@ export function useMessageSender({
           replyTo: replyToId,
         }),
       });
+
+      if (response.status === 403) {
+        await rejectSend(tempId, response);
+        return;
+      }
 
       if (!response.ok) {
         throw new Error("Failed to send media");
@@ -251,7 +271,7 @@ export function useMessageSender({
         updateOfflineStorage(offlineQueueRef.current);
       }
     }
-  }, [chatId, currentUserId, setMessages]);
+  }, [chatId, currentUserId, setMessages, rejectSend]);
 
   const retryOfflineQueue = useCallback(async () => {
     if (offlineQueueRef.current.length === 0) return;

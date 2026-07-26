@@ -3,7 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NotificationListener from "@/features/notifications/components/NotificationListener";
 import OfflineBanner from "@/components/ui/OfflineBanner";
+import RestrictionBanner from "@/components/ui/RestrictionBanner";
 import ServerWakeGate from "@/components/ui/ServerWakeGate";
+import AnnouncementCenter from "@/features/announcements/components/AnnouncementCenter";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -61,6 +63,8 @@ export default function RootLayout({
       >
         <ServerWakeGate>{children}</ServerWakeGate>
         <NotificationListener />
+        <AnnouncementCenter />
+        <RestrictionBanner />
         <OfflineBanner />
       </body>
     </html>

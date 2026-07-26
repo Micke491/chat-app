@@ -151,6 +151,28 @@ func CreateIndexes(ctx context.Context) error {
 		log.Printf("Warning: Failed to create draft indexes: %v\n", err)
 	}
 
+	announcementDeliveryIndexModel := mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "status", Value: 1},
+			{Key: "audience", Value: 1},
+			{Key: "sentAt", Value: -1},
+		},
+	}
+
+	announcementReadByIndexModel := mongo.IndexModel{
+		Keys:    bson.M{"readBy": 1},
+		Options: options.Index().SetSparse(true),
+	}
+
+	announcementIndexes := []mongo.IndexModel{
+		announcementDeliveryIndexModel,
+		announcementReadByIndexModel,
+	}
+
+	if _, err := AnnouncementCollection.Indexes().CreateMany(ctx, announcementIndexes); err != nil {
+		log.Printf("Warning: Failed to create announcement indexes: %v\n", err)
+	}
+
 	log.Println("Database index migration completed successfully.")
 	return nil
 }

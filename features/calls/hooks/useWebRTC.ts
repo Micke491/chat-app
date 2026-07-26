@@ -722,6 +722,15 @@ export function useWebRTC({ callId, currentUser, withVideo }: UseWebRTCOptions) 
           if (Array.isArray(data.iceServers) && data.iceServers.length > 0) {
             iceServersRef.current = data.iceServers;
           }
+          // STUN alone only works when both peers can reach each other
+          // directly. A phone on mobile data sits behind carrier-grade NAT,
+          // so without a relay that call hangs on "connecting" forever.
+          if (data.hasRelay === false) {
+            console.warn(
+              "[calls] No TURN relay configured on the backend — calls between " +
+                "different networks (e.g. desktop <-> phone on mobile data) will not connect."
+            );
+          }
         }
       } catch {
         // Keep the fallback STUN config.

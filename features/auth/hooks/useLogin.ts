@@ -31,6 +31,8 @@ export function useLogin() {
       const data = await response.json();
       if (!response.ok) {
         setError(data.message || 'Login failed');
+        setEmail('');
+        setPassword('');
         setLoading(false);
         return;
       }
@@ -46,6 +48,7 @@ export function useLogin() {
       window.location.href = '/chat'; 
     } catch (err) {
       setError('Something went wrong. Please try again.');
+      setPassword('');
       setLoading(false);
     }
   };
@@ -64,6 +67,7 @@ export function useLogin() {
       const data = await response.json();
       if (!response.ok) {
         setError(data.error || data.message || 'Verification failed');
+        setTwoFaCode('');
         setVerifying2FA(false);
         return;
       }

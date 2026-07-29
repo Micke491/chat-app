@@ -4,12 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MAX_AUDIO_BYTES, MAX_RECORDING_SECONDS, formatBytes, pickRecorderMimeType } from '../utils';
 
 interface UseVoiceRecorderOptions {
-  onTranscript: (text: string) => void;
+  /** Receives the finished recording so it can be sent to the model as real audio. */
+  onRecording: (blob: Blob, durationSec: number) => void;
   onError: (message: string) => void;
   disabled: () => boolean;
 }
 
-export function useVoiceRecorder({ onTranscript, onError, disabled }: UseVoiceRecorderOptions) {
+export function useVoiceRecorder({ onRecording, onError, disabled }: UseVoiceRecorderOptions) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
@@ -20,12 +21,6 @@ export function useVoiceRecorder({ onTranscript, onError, disabled }: UseVoiceRe
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingStartRef = useRef<number>(0);
   const recordingCancelledRef = useRef(false);
-
-  const [sttTranscript, setSttTranscript] = useState('');
-  const [sttInterim, setSttInterim] = useState('');
-  const [sttSupported, setSttSupported] = useState(true);
-  const speechRecognitionRef = useRef<any>(null);
-  const sttTranscriptRef = useRef('');
 
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
@@ -39,18 +34,6 @@ export function useVoiceRecorder({ onTranscript, onError, disabled }: UseVoiceRe
   const stopRecordingStream = useCallback(() => {
     recordingStreamRef.current?.getTracks().forEach(t => t.stop());
     recordingStreamRef.current = null;
-  }, []);
-
-  const stopSpeechRecognition = useCallback(() => {
-    if (speechRecognitionRef.current) {
-      try {
-        speechRecognitionRef.current.stop();
-      } catch {
-        // already stopped
-      }
-      speechRecognitionRef.current = null;
-    }
-    setSttInterim('');
   }, []);
 
   const loadAudioDevices = useCallback(async () => {
@@ -81,10 +64,9 @@ export function useVoiceRecorder({ onTranscript, onError, disabled }: UseVoiceRe
   useEffect(() => {
     return () => {
       stopRecordingStream();
-      stopSpeechRecognition();
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     };
-  }, [stopRecordingStream, stopSpeechRecognition]);
+  }, [stopRecordingStream]);
 
   useEffect(() => {
     if (!showDeviceMenu) return;
@@ -125,65 +107,6 @@ export function useVoiceRecorder({ onTranscript, onError, disabled }: UseVoiceRe
       document.removeEventListener('keydown', handleEscape);
     };
   }, [showDeviceMenu]);
-
-  const startSpeechRecognition = useCallback(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setSttSupported(false);
-      return;
-    }
-    setSttSupported(true);
-    setSttTranscript('');
-    setSttInterim('');
-    sttTranscriptRef.current = '';
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    // Use the browser's configured language — Chrome/Edge pick up the OS locale
-    // (e.g. 'sr', 'sr-RS', 'en-US') and route to the right model.
-    recognition.lang = navigator.language || 'en-US';
-    recognition.maxAlternatives = 1;
-
-    recognition.onresult = (event: any) => {
-      let sessionFinal = '';
-      let interimText = '';
-      for (let i = 0; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) sessionFinal += result[0].transcript;
-        else interimText += result[0].transcript;
-      }
-      if (sessionFinal) {
-        sttTranscriptRef.current = (sttTranscriptRef.current + ' ' + sessionFinal).trim();
-        setSttTranscript(sttTranscriptRef.current);
-      }
-      setSttInterim(interimText);
-    };
-
-    recognition.onerror = (event: any) => {
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.warn('Speech recognition error:', event.error);
-      }
-    };
-
-    recognition.onend = () => {
-      if (!recordingCancelledRef.current && mediaRecorderRef.current?.state === 'recording') {
-        try {
-          recognition.start();
-        } catch {
-          // already restarted
-        }
-      }
-    };
-
-    try {
-      recognition.start();
-      speechRecognitionRef.current = recognition;
-    } catch {
-      setSttSupported(false);
-    }
-  }, []);
 
   const startRecording = useCallback(async () => {
     setMicPermissionError(null);
@@ -239,25 +162,14 @@ export function useVoiceRecorder({ onTranscript, onError, disabled }: UseVoiceRe
         } else if (elapsed < 0.6) {
           onError('Recording was too short.');
         } else {
-          const transcript = sttTranscriptRef.current.trim();
-          if (transcript) {
-            onTranscript(transcript);
-          } else if (elapsed >= 2.0) {
-            onError('Could not transcribe speech. Please try again or type your message.');
-          }
+          onRecording(blob, elapsed);
         }
-
-        setSttTranscript('');
-        setSttInterim('');
-        sttTranscriptRef.current = '';
       };
 
       recordingStartRef.current = Date.now();
       recorder.start();
       setIsRecording(true);
       setRecordingSeconds(0);
-
-      startSpeechRecognition();
 
       recordingTimerRef.current = setInterval(() => {
         setRecordingSeconds(prev => {
@@ -277,7 +189,7 @@ export function useVoiceRecorder({ onTranscript, onError, disabled }: UseVoiceRe
       }
       stopRecordingStream();
     }
-  }, [disabled, selectedDeviceId, loadAudioDevices, onError, onTranscript, startSpeechRecognition, stopRecordingStream]);
+  }, [disabled, selectedDeviceId, loadAudioDevices, onError, onRecording, stopRecordingStream]);
 
   const finishRecording = useCallback(() => {
     const recorder = mediaRecorderRef.current;
@@ -285,8 +197,7 @@ export function useVoiceRecorder({ onTranscript, onError, disabled }: UseVoiceRe
       recordingCancelledRef.current = false;
       recorder.stop();
     }
-    stopSpeechRecognition();
-  }, [stopSpeechRecognition]);
+  }, []);
 
   useEffect(() => {
     finishRecordingRef.current = finishRecording;
@@ -302,14 +213,11 @@ export function useVoiceRecorder({ onTranscript, onError, disabled }: UseVoiceRe
       setIsRecording(false);
       setRecordingSeconds(0);
     }
-    stopSpeechRecognition();
-    setSttTranscript('');
-    sttTranscriptRef.current = '';
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
-  }, [stopRecordingStream, stopSpeechRecognition]);
+  }, [stopRecordingStream]);
 
   const toggleDeviceMenu = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -327,7 +235,6 @@ export function useVoiceRecorder({ onTranscript, onError, disabled }: UseVoiceRe
     isRecording, recordingSeconds,
     micPermissionError, setMicPermissionError,
     startRecording, finishRecording, cancelRecording,
-    sttTranscript, sttInterim, sttSupported,
     audioDevices, selectedDeviceId, showDeviceMenu, deviceMenuPos,
     micWrapperRef, deviceMenuRef, toggleDeviceMenu, selectDevice,
   };

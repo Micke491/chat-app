@@ -20,6 +20,7 @@ import { BotChat, BotMessage, BotUser, PendingAttachment } from '@/features/bot/
 import {
   ACCEPTED_IMAGE_TYPES, ACCEPTED_VIDEO_TYPES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES,
   conversationToPlainText, downloadMarkdown, fileToBase64, formatBytes,
+  normalizeAudioMimeType, voiceMessageFileName,
 } from '@/features/bot/utils';
 
 const SIDEBAR_COLLAPSED_KEY = 'vokitoki:bot-sidebar-collapsed';
@@ -74,18 +75,29 @@ export default function BotPage() {
   const clearPendingAttachment = useCallback(() => setPendingAttachment(null), []);
 
   const recorder = useVoiceRecorder({
-    onTranscript: transcript => {
-      setInput(prev => {
-        const base = prev.trim();
-        return base ? `${base} ${transcript}` : transcript;
-      });
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-          inputRef.current.style.height = 'auto';
-          inputRef.current.style.height = inputRef.current.scrollHeight + 'px';
-        }
-      }, 80);
+    // The recording is sent to the model as real audio — it is never transcribed
+    // client-side, so the model hears tone, pauses and language directly.
+    onRecording: async (blob, durationSec) => {
+      setAttachmentLoading(true);
+      try {
+        const mimeType = normalizeAudioMimeType(blob.type);
+        const data = await fileToBase64(blob);
+        const previewUrl = URL.createObjectURL(blob);
+        createdBlobUrls.current.push(previewUrl);
+        setPendingAttachment({
+          type: 'audio',
+          mimeType,
+          fileName: voiceMessageFileName(mimeType),
+          data,
+          previewUrl,
+          sizeBytes: blob.size,
+          durationSec: Math.round(durationSec),
+        });
+      } catch {
+        setToastError('Could not process the recording. Please try again.');
+      } finally {
+        setAttachmentLoading(false);
+      }
     },
     onError: message => setToastError(message),
     disabled: () => sending || attachmentLoading,

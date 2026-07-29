@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  AudioLines, Check, ChevronDown, Loader2, Mic, Paperclip, Send, Square, Trash, Type, X,
+  AudioLines, Check, ChevronDown, Loader2, Mic, Paperclip, Send, Square, Trash, X,
 } from 'lucide-react';
 import { PendingAttachment } from '../types';
 import { ACCEPT_ATTR, formatBytes, formatDuration } from '../utils';
@@ -106,9 +106,6 @@ interface BotComposerProps {
     startRecording: () => void;
     finishRecording: () => void;
     cancelRecording: () => void;
-    sttTranscript: string;
-    sttInterim: string;
-    sttSupported: boolean;
     showDeviceMenu: boolean;
     micWrapperRef: React.RefObject<HTMLDivElement | null>;
     toggleDeviceMenu: (e: React.MouseEvent) => void;
@@ -124,7 +121,7 @@ export default function BotComposer({
 }: BotComposerProps) {
   const {
     isRecording, recordingSeconds, startRecording, finishRecording, cancelRecording,
-    sttTranscript, sttInterim, sttSupported, showDeviceMenu, micWrapperRef, toggleDeviceMenu,
+    showDeviceMenu, micWrapperRef, toggleDeviceMenu,
   } = recorder;
 
   const hasContent = !!input.trim() || !!pendingAttachment;
@@ -180,21 +177,11 @@ export default function BotComposer({
                   >
                     <div className="relative w-10 h-10 rounded-lg bg-chat-accent/15 text-chat-accent flex items-center justify-center shrink-0">
                       <AudioLines className="w-5 h-5" />
-                      {input.trim() && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shadow-sm" title="Transcribed to text">
-                          <Type className="w-2.5 h-2.5 text-white" />
-                        </div>
-                      )}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-chat-text-primary flex items-center gap-1.5">
-                        Voice message
-                        {input.trim() && (
-                          <span className="text-[9px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Transcribed</span>
-                        )}
-                      </p>
+                      <p className="text-xs font-medium text-chat-text-primary">Voice message</p>
                       <p className="text-[10px] text-chat-text-tertiary">
-                        {pendingAttachment.durationSec ? formatDuration(pendingAttachment.durationSec) : ''} · {formatBytes(pendingAttachment.sizeBytes)}{input.trim() ? ' · edit text below' : ' · ready to send'}
+                        {pendingAttachment.durationSec ? formatDuration(pendingAttachment.durationSec) : ''} · {formatBytes(pendingAttachment.sizeBytes)} · ready to send
                       </p>
                     </div>
                     <button
@@ -295,31 +282,6 @@ export default function BotComposer({
                       <Check className="w-4 h-4" />
                     </motion.button>
                   </div>
-
-                  {sttSupported && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      className="flex items-start gap-2 px-1 pb-0.5"
-                    >
-                      <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
-                        <Type className="w-3 h-3 text-chat-accent" />
-                        <span className="text-[10px] font-semibold text-chat-accent uppercase tracking-wider">Live</span>
-                      </div>
-                      <p className="text-xs text-chat-text-secondary leading-relaxed flex-1 min-w-0 line-clamp-2 break-words">
-                        {(sttTranscript + sttInterim) || (
-                          <span className="text-chat-text-tertiary italic">Listening for speech...</span>
-                        )}
-                        {(sttTranscript || sttInterim) && (
-                          <motion.span
-                            className="inline-block w-[2px] h-3 bg-chat-accent ml-0.5 align-middle"
-                            animate={{ opacity: [1, 0, 1] }}
-                            transition={{ duration: 0.8, repeat: Infinity }}
-                          />
-                        )}
-                      </p>
-                    </motion.div>
-                  )}
                 </motion.div>
               ) : (
                 <motion.div

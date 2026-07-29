@@ -23,6 +23,23 @@ export function pickRecorderMimeType(): string {
   return '';
 }
 
+export function normalizeAudioMimeType(mimeType: string): string {
+  return (mimeType.split(';')[0] || 'audio/webm').trim().toLowerCase();
+}
+
+const AUDIO_EXTENSIONS: Record<string, string> = {
+  'audio/webm': 'webm',
+  'audio/ogg': 'ogg',
+  'audio/mp4': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+};
+
+export function voiceMessageFileName(mimeType: string): string {
+  const ext = AUDIO_EXTENSIONS[normalizeAudioMimeType(mimeType)] || 'webm';
+  return `voice-message.${ext}`;
+}
+
 export function groupChatsByDate(chats: BotChat[]): { label: string; chats: BotChat[] }[] {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());

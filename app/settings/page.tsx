@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import SideBar from '@/features/sidebar/components/Sidebar';
 import {
   ArrowLeft, Loader2, CheckCircle, AlertTriangle,
-  User as UserIcon, Shield, Bell, Palette, Bot, LifeBuoy
+  User as UserIcon, Shield, Bell, Palette, Sparkles, LifeBuoy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import AccountSettingsTab from '@/features/settings/components/AccountSettingsTab';
@@ -99,7 +99,7 @@ export default function SettingsPage() {
     { id: 'privacy', label: 'Privacy & Security', icon: Shield, danger: false },
     { id: 'notifications', label: 'Notifications', icon: Bell, danger: false },
     { id: 'appearance', label: 'Appearance', icon: Palette, danger: false },
-    { id: 'ai', label: 'AI Assistant', icon: Bot, danger: false },
+    { id: 'ai', label: 'AI Assistant', icon: Sparkles, danger: false },
     { id: 'support', label: 'Support & Legal', icon: LifeBuoy, danger: false },
     { id: 'danger', label: 'Danger Zone', icon: AlertTriangle, danger: true },
   ] as const;

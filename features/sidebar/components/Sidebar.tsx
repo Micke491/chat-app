@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { Bot } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 
 interface SideBarProps {
@@ -60,7 +60,7 @@ export default function SideBar({
     {
       label: "AI Assistant",
       path: "/bot",
-      icon: <Bot className="shrink-0 w-6 h-6" />,
+      icon: <Sparkles className="shrink-0 w-6 h-6" />,
     },
     {
       label: "Profile",

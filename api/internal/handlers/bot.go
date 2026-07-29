@@ -547,8 +547,9 @@ func SendBotMessage(c *gin.Context) {
 	}
 
 	var body struct {
-		Text        string                `json:"text"`
-		Attachments []incomingAttachment  `json:"attachments"`
+		Text        string               `json:"text"`
+		Attachments []incomingAttachment `json:"attachments"`
+		FromIndex   *int                 `json:"fromIndex"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
@@ -591,6 +592,12 @@ func SendBotMessage(c *gin.Context) {
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch chat"})
 		return
+	}
+
+	truncated := false
+	if body.FromIndex != nil && *body.FromIndex >= 0 && *body.FromIndex <= len(chat.Messages) {
+		chat.Messages = chat.Messages[:*body.FromIndex]
+		truncated = true
 	}
 
 	isFirstMessage := len(chat.Messages) == 0
@@ -831,13 +838,22 @@ func SendBotMessage(c *gin.Context) {
 		newMessages = append(newMessages, botMsg)
 	}
 
-	_, pushErr := db.BotChatCollection.UpdateOne(dbCtx,
-		bson.M{"_id": chatID},
-		bson.M{
+	var update bson.M
+	if truncated {
+		update = bson.M{
+			"$set": bson.M{
+				"updatedAt": time.Now(),
+				"messages":  append(append([]models.BotMessage{}, chat.Messages...), newMessages...),
+			},
+		}
+	} else {
+		update = bson.M{
 			"$set":  bson.M{"updatedAt": time.Now()},
 			"$push": bson.M{"messages": bson.M{"$each": newMessages}},
-		},
-	)
+		}
+	}
+
+	_, pushErr := db.BotChatCollection.UpdateOne(dbCtx, bson.M{"_id": chatID}, update)
 	if pushErr != nil {
 		log.Printf("SendBotMessage: failed to persist messages for chat %s: %v", chatID.Hex(), pushErr)
 

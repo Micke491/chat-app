@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Bot, Sparkles, Code2, Trophy, User2, Check } from 'lucide-react';
+import { Sparkles, Code2, Trophy, User2, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export type BotPersona = 'default' | 'coding' | 'coach' | 'sarcastic';
@@ -94,7 +94,7 @@ export default function AISettingsTab({ currentUser, onUserUpdate, setFeedback }
     <div className="space-y-8">
       <div className="flex items-center gap-4">
         <div className="p-3 rounded-2xl bg-gradient-to-br from-chat-accent to-purple-600 shadow-lg shadow-chat-accent/30">
-          <Bot className="w-6 h-6 text-white" />
+          <Sparkles className="w-6 h-6 text-white" />
         </div>
         <div>
           <h2 className="text-2xl font-black text-chat-text-primary tracking-tight">AI Assistant</h2>

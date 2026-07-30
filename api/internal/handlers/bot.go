@@ -41,9 +41,9 @@ const (
 	maxAudioBytes         = 12 * 1024 * 1024
 	maxThumbnailB64Len = 60 * 1024
 
-	maxMessagesPerChat   = 100        
-    maxHistoryChars      = 8000       
-    geminiMaxOutputTokens = 1000 
+	maxMessagesPerChat   = 100
+    maxHistoryChars      = 24000
+    geminiMaxOutputTokens = 8192
 )
 
 var geminiHTTPClient = &http.Client{
@@ -374,13 +374,13 @@ func getSystemInstruction(persona string) string {
 	base := ""
 	switch persona {
 	case "sarcastic":
-		base = "You are a highly sarcastic, witty, and humorous AI. Keep answers concise, funny, and playfully mocking but ultimately helpful."
+		base = "You are a highly sarcastic, witty, and humorous AI. Be playfully mocking, but still give a full, genuinely useful answer — the joke is in the delivery, never an excuse to cut the answer short."
 	case "coding":
-		base = "You are an expert software engineer. Provide clear, concise code examples, explain technical concepts professionally, and prioritize best practices."
+		base = "You are an expert software engineer. Provide complete, runnable code examples, explain the reasoning and trade-offs behind them, and call out best practices and common pitfalls."
 	case "coach":
-		base = "You are a motivational professional coach. Be extremely encouraging, structured, goal-oriented, and uplifting."
+		base = "You are a motivational professional coach. Be extremely encouraging, structured, goal-oriented, and uplifting, and give concrete actionable steps rather than generic encouragement."
 	default:
-		base = "You are a helpful, friendly, and concise AI assistant. Format your answers clearly."
+		base = "You are a helpful, friendly, and knowledgeable AI assistant. Give complete, well-reasoned answers with enough depth and examples that the user does not have to ask a follow-up just to get the rest."
 	}
 
 	appContext := fmt.Sprintf(` You are seamlessly integrated into VokiToki, a modern real-time messaging platform. You are powered by the Google %s model.
@@ -426,7 +426,12 @@ VokiToki is a full-stack chat application built with Next.js 16, React 19, TypeS
 - How to forward a message (long-press or right-click a message > Forward)
 - How to search for users (use the search bar in the chat sidebar)
 
-Keep responses helpful, well-structured, and formatted with markdown. Use headings, bold text, bullet points, and code blocks where appropriate for readability.`, geminiModel)
+Keep responses helpful, well-structured, and formatted with markdown. Use headings, bold text, bullet points, and code blocks where appropriate for readability.
+
+**Answer length and completeness:**
+Match the length of your answer to what was actually asked. A quick factual question deserves a short answer, but an explanation, a how-to, a comparison, or a coding question deserves a thorough one — walk through the reasoning, give examples, and cover the edge cases that matter.
+
+Always finish what you start. Never stop mid-sentence, mid-list, mid-step, or mid-code-block. If a complete answer would be very long, prioritise fully covering the most important part and say what you left out, rather than opening sections you cannot finish. If you promise a list of N things, deliver all N.`, geminiModel)
 
 	return base + appContext
 }
@@ -768,6 +773,7 @@ func SendBotMessage(c *gin.Context) {
 
 	reader := bufio.NewReader(resp.Body)
 	var fullBotText strings.Builder
+	var finishReason string
 
 	for {
 		if reqCtx.Err() != nil {
@@ -797,9 +803,11 @@ func SendBotMessage(c *gin.Context) {
 			Candidates []struct {
 				Content struct {
 					Parts []struct {
-						Text string `json:"text"`
+						Text    string `json:"text"`
+						Thought bool   `json:"thought"`
 					} `json:"parts"`
 				} `json:"content"`
+				FinishReason string `json:"finishReason"`
 			} `json:"candidates"`
 		}
 
@@ -807,18 +815,45 @@ func SendBotMessage(c *gin.Context) {
 			log.Printf("SendBotMessage: skipping unparsable SSE chunk: %v", err)
 			continue
 		}
-		if len(chunk.Candidates) == 0 || len(chunk.Candidates[0].Content.Parts) == 0 {
+		if len(chunk.Candidates) == 0 {
 			continue
 		}
 
-		textPiece := chunk.Candidates[0].Content.Parts[0].Text
-		fullBotText.WriteString(textPiece)
+		candidate := chunk.Candidates[0]
+		if candidate.FinishReason != "" {
+			finishReason = candidate.FinishReason
+		}
+
+		var textPiece strings.Builder
+		for _, part := range candidate.Content.Parts {
+			if part.Thought || part.Text == "" {
+				continue
+			}
+			textPiece.WriteString(part.Text)
+		}
+		if textPiece.Len() == 0 {
+			continue
+		}
+
+		fullBotText.WriteString(textPiece.String())
 
 		chunkData, _ := json.Marshal(map[string]string{
 			"type": "chunk",
-			"text": textPiece,
+			"text": textPiece.String(),
 		})
 		fmt.Fprintf(c.Writer, "data: %s\n\n", chunkData)
+		c.Writer.Flush()
+	}
+
+	if finishReason == "MAX_TOKENS" {
+		log.Printf("SendBotMessage: response hit MAX_TOKENS for chat %s", chatID.Hex())
+		notice := "\n\n_(Response reached its length limit — ask me to continue.)_"
+		fullBotText.WriteString(notice)
+		noticeData, _ := json.Marshal(map[string]string{
+			"type": "chunk",
+			"text": notice,
+		})
+		fmt.Fprintf(c.Writer, "data: %s\n\n", noticeData)
 		c.Writer.Flush()
 	}
 
